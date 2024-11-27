@@ -1,12 +1,13 @@
-package main
+package worker
 
 import (
 	_ "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
 	"math/rand"
+	"cueball"
 	"cueball/execute"
 	"fmt"
-	"time"
 )
 
 
@@ -15,6 +16,7 @@ type StageWorker struct {
 	Word string
 	Number int
 }
+
 
 func (s *StageWorker)Name() string {
 	return "stage-worker"
@@ -26,11 +28,13 @@ func (s *StageWorker)FuncInit() error {
 }
 
 func (s *StageWorker) Printer() {
-	fmt.Printf("STAGE %d:%d (%d) %s\n", s.Count, s.Current, s.Number, s.ID())
+	log.Debug().Interface("stage", s).Send()
 }
 
-func (s *StageWorker) New() execute.Worker {
+func (s *StageWorker) New() cueball.Worker {
 	sw := StageWorker{Exec: &execute.Exec{}}
+	sw.ID()
+	sw.Group()
 	return &sw
 }
 
@@ -54,33 +58,3 @@ func (s *StageWorker) Stage3() error {
 	return nil
 }
 
-func main () {
-	s, err := execute.NewFifoState("fifo", 1)
-	if err != nil {
-		log.Err(err).Send()
-	}
-	w := (&StageWorker{}).New()
-	tick := time.NewTicker(5 * time.Millisecond)
-	done := make(chan bool)
-	go func () { 
-		i:=0
-		for  {
-			select {
-			case <- done:
-			case <- tick.C:
-				if i < 23 {
-					s.Enqueue(w.New())
-					i++
-				}
-			}
-		}
-	}()
-	go func () {
-		
-		for {
-			s.Dequeue(w)
-		}
-	
-	}()
-	execute.Run(s)
-}

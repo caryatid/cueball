@@ -4,6 +4,7 @@ import (
 	_ "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"context"
+	"cueball"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 	"errors"
@@ -17,13 +18,6 @@ func (e *EndError) Error() string {
 	return "iteration complete"
 }
 
-type Executer interface {
-	Next() error
-	Load(method... Method)
-	// TODO think on removing the below
-	ID() uuid.UUID
-}
-
 type Exec struct {
 	Id uuid.UUID
 	Count int
@@ -32,24 +26,8 @@ type Exec struct {
 	Sequence []Method `json:"-"`
 }
 
-type Worker interface {
-	Executer
-	Name() string
-	FuncInit() error
-	New() Worker // TODO no malloc?
-}
 
-type State interface {
-	Dequeue(Worker) error 
-	Enqueue(Worker) error
-	Channel() chan Worker
-
-	// should be able todo w/ only queues
-	// Persist(Worker) error
-	// LoadState(Worker) error
-}
-
-func Run(s State) error { 
+func Run(s cueball.State) error { 
 	g, _ := errgroup.WithContext(context.Background()) // TODO
 	for {
 		select {
@@ -70,6 +48,10 @@ func Run(s State) error {
 	
 }
 
+func (e *Exec) Group() *errgroup.Group {
+	if e.Group == nil {
+		e.Group, err := errgroup.WithContext(
+}
 func (e *Exec) ID() uuid.UUID {
 	if e.Id == uuid.Nil {
 		e.Id, _ = uuid.NewRandom() // TODO error handling

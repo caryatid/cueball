@@ -1,9 +1,10 @@
-package execute
+package state
 
 import(
 //	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"cueball/worker"
 	"sync"
 	"io/fs"
 	"syscall"
@@ -13,21 +14,20 @@ import(
 	"encoding/base64"
 )
 
-
-type FifoState struct {
+type Fifo struct {
 	// TODO !!! apparently Windoze does not have fifo's wtf.
 	m sync.Mutex
 	in *os.File
 	out *os.File
-	workq chan Worker
+	workq chan worker.Worker
 }
 
-func NewFifoState(fname string, size int) (*FifoState, error) {
+func NewFifo(fname string, size int) (*Fifo, error) {
 	var err error
 	if size <= 0 {
 		size = 1
 	}
-	s := &FifoState{workq: make(chan Worker, size)}
+	s := &Fifo{workq: make(chan worker.Worker, size)}
 	if _, err := os.Stat(fname); err != nil {
 		log.Debug().Err(err).Msg("making fifo")
 		if err := syscall.Mkfifo(fname, 0644); err != nil {
@@ -66,33 +66,36 @@ func NewFifoState(fname string, size int) (*FifoState, error) {
 	return s, nil
 }
 
-func (s *FifoState) Channel() chan Worker {
+func (s *Fifo) Channel() chan worker.Worker {
 	return s.workq
 }
 
-func (s *FifoState) Dequeue(w Worker) error {
-	data, err := bufio.NewReader(s.out).ReadString('\n')
-	if err != nil {
-		log.Debug().Err(err).Msg("failed reading")
-		return err
-	}
-	b, err := base64.StdEncoding.DecodeString(data)
-	if err != nil {
-		log.Debug().Err(err).Msg("failed decoding")
-		return err
-	}
-	ww := w.New()
-	err = json.Unmarshal(b, ww)
-	if err != nil {
-		log.Debug().Err(err).Msg("failed unmarshalling")
-		return err
-	}
-	ww.FuncInit()
-	s.workq <- ww
-	return nil
+func (s *Fifo) Dequeue(w worker.Worker) {
+	w.Group().Go(func () error {
+		for {
+			data, err := bufio.NewReader(s.out).ReadString('\n')
+			if err != nil {
+				log.Debug().Err(err).Msg("failed reading")
+				return err
+			}
+			b, err := base64.StdEncoding.DecodeString(data)
+			if err != nil {
+				log.Debug().Err(err).Msg("failed decoding")
+				return err
+			}
+			ww := w.New()
+			err = json.Unmarshal(b, ww)
+			if err != nil {
+				log.Debug().Err(err).Msg("failed unmarshalling")
+				return err
+			}
+			ww.FuncInit()
+			s.workq <- ww
+		}
+	})
 }
 
-func (s *FifoState) Enqueue(w Worker) error {
+func (s *Fifo) Enqueue(w worker.Worker) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 	w.ID()
