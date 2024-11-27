@@ -1,9 +1,12 @@
 package execute
 
 import (
+	_ "github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"context"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
+	"errors"
 )
 
 type Method func() error 
@@ -14,20 +17,18 @@ func (e *EndError) Error() string {
 	return "iteration complete"
 }
 
-
 type Executer interface {
-	ID() uuid.UUID
-	GenID() error
-	Next(State, Worker) error
+	Next() error
 	Load(method... Method)
-	RegError(error)
+	// TODO think on removing the below
+	ID() uuid.UUID
 }
 
 type Exec struct {
 	Id uuid.UUID
 	Count int
 	Current int
-	Error error
+	Error string
 	Sequence []Method `json:"-"`
 }
 
@@ -48,46 +49,49 @@ type State interface {
 	// LoadState(Worker) error
 }
 
-func Run(s State, w Worker) error { 
-	go s.Dequeue(w)
+func Run(s State) error { 
 	g, _ := errgroup.WithContext(context.Background()) // TODO
 	for {
 		select {
-		case w = <- s.Channel():
-			g.Go(func () error { return w.Next(s, w) })
-		// other cases
+		case w := <- s.Channel():
+			g.Go(func () error { 
+				err := w.Next()
+				if err != nil && errors.Is(err, &EndError{}) {
+					return nil
+				} else if err != nil {
+					log.Debug().Err(err).Interface("worker", w).
+					Msg("re-enqueue")
+				}
+				s.Enqueue(w)
+				return err
+			})
 		}
 	}
 	
 }
 
 func (e *Exec) ID() uuid.UUID {
+	if e.Id == uuid.Nil {
+		e.Id, _ = uuid.NewRandom() // TODO error handling
+	}
 	return e.Id
 }
 
 func (e *Exec) RegError(err error)  {
-	e.Error = err
+	e.Error = err.Error()
 }
 
-func (e *Exec) GenID() error {
-	var err error
-	e.Id, err = uuid.NewRandom()
-	return err
-}
-
-func (e *Exec) Next(s State, w Worker) error {
+func (e *Exec) Next() error {
 	e.Count++
-	if e.Current >= len(e.Sequence) { // TODO test for greater; should never happen
+	if e.Current >= len(e.Sequence) {
 		return new(EndError)
 	}
 	err := e.Sequence[e.Current]()
 	if err != nil {
 		e.RegError(err)
-		s.Enqueue(w)
 		return err
 	}
 	e.Current++
-	err = s.Enqueue(w)
 	return nil
 }
 

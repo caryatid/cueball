@@ -1,15 +1,19 @@
 package main
 
 import (
+	_ "github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"math/rand"
 	"cueball/execute"
 	"fmt"
+	"time"
 )
 
 
 type StageWorker struct {
 	*execute.Exec 
-	word string
-	number int
+	Word string
+	Number int
 }
 
 func (s *StageWorker)Name() string {
@@ -21,32 +25,62 @@ func (s *StageWorker)FuncInit() error {
 	return nil
 }
 
+func (s *StageWorker) Printer() {
+	fmt.Printf("STAGE %d:%d (%d) %s\n", s.Count, s.Current, s.Number, s.ID())
+}
+
 func (s *StageWorker) New() execute.Worker {
-	return &StageWorker{Exec: new(execute.Exec)}
+	sw := StageWorker{Exec: &execute.Exec{}}
+	return &sw
 }
 
 func (s *StageWorker) Stage1() error {
-	fmt.Println("STAGE ONE")
+	s.Number = rand.Int() % 10
+	s.Printer()
 	return nil
 }
 
 func (s *StageWorker) Stage2() error {
-	fmt.Println("STAGE TWO")
+	s.Printer()
+	if s.Number < 4 {
+		s.Number = 10
+		return fmt.Errorf("an error")
+	}
 	return nil
 }
 
 func (s *StageWorker) Stage3() error {
-	fmt.Println("STAGE THREE")
+	s.Printer()
 	return nil
 }
 
-
 func main () {
-	sw := &StageWorker{Exec: new(execute.Exec), word: "hello", number: 123}
 	s, err := execute.NewFifoState("fifo", 1)
 	if err != nil {
-		fmt.Errorf("WOAH: %w\n", err)
+		log.Err(err).Send()
 	}
-	s.Enqueue(sw)
-	execute.Run(s, sw)
+	w := (&StageWorker{}).New()
+	tick := time.NewTicker(5 * time.Millisecond)
+	done := make(chan bool)
+	go func () { 
+		i:=0
+		for  {
+			select {
+			case <- done:
+			case <- tick.C:
+				if i < 23 {
+					s.Enqueue(w.New())
+					i++
+				}
+			}
+		}
+	}()
+	go func () {
+		
+		for {
+			s.Dequeue(w)
+		}
+	
+	}()
+	execute.Run(s)
 }

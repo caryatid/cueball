@@ -1,11 +1,13 @@
 package execute
 
 import(
-//	"fmt"
+//	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+
+	"sync"
 	"io/fs"
 	"syscall"
 	"os"
-	"github.com/google/uuid"
 	"bufio"
 	"encoding/json"
 	"encoding/base64"
@@ -14,6 +16,7 @@ import(
 
 type FifoState struct {
 	// TODO !!! apparently Windoze does not have fifo's wtf.
+	m sync.Mutex
 	in *os.File
 	out *os.File
 	workq chan Worker
@@ -26,7 +29,9 @@ func NewFifoState(fname string, size int) (*FifoState, error) {
 	}
 	s := &FifoState{workq: make(chan Worker, size)}
 	if _, err := os.Stat(fname); err != nil {
+		log.Debug().Err(err).Msg("making fifo")
 		if err := syscall.Mkfifo(fname, 0644); err != nil {
+			log.Debug().Err(err).Msg("failed making fifo")
 			return nil, err
 		}
 	}
@@ -43,17 +48,21 @@ func NewFifoState(fname string, size int) (*FifoState, error) {
 		s.in, err = os.OpenFile(fname, os.O_WRONLY, fs.ModeNamedPipe)
 		if err != nil {
 			check <- err
+			return
 		}
 		check <- nil
 	}()
-	s.out, err = os.Open(fname)
+	s.out, err = os.OpenFile(fname, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
+		log.Debug().Err(err).Msg("failed opening fifo for reading")
 		return nil, err
 	}
 	err = <- check
 	if err != nil {
+		log.Debug().Err(err).Msg("failed opening fifo for writing")
 		return nil, err
 	}
+	
 	return s, nil
 }
 
@@ -62,36 +71,41 @@ func (s *FifoState) Channel() chan Worker {
 }
 
 func (s *FifoState) Dequeue(w Worker) error {
-	for {
-		data, err := bufio.NewReader(s.out).ReadString('\n')
-		if err != nil {
-			return err
-		}
-		b, err := base64.StdEncoding.DecodeString(data)
-		if err != nil {
-			return err
-		}
-		ww := w.New()
-		err = json.Unmarshal(b, ww)
-		if err != nil {
-			return err
-		}
-		if ww.ID() == uuid.Nil {
-			ww.GenID()
-		}
-		ww.FuncInit()
-		s.workq <- ww
+	data, err := bufio.NewReader(s.out).ReadString('\n')
+	if err != nil {
+		log.Debug().Err(err).Msg("failed reading")
+		return err
 	}
+	b, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		log.Debug().Err(err).Msg("failed decoding")
+		return err
+	}
+	ww := w.New()
+	err = json.Unmarshal(b, ww)
+	if err != nil {
+		log.Debug().Err(err).Msg("failed unmarshalling")
+		return err
+	}
+	ww.FuncInit()
+	s.workq <- ww
 	return nil
 }
 
 func (s *FifoState) Enqueue(w Worker) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+	w.ID()
 	b, err := json.Marshal(w)
 	if err != nil {
+		log.Debug().Err(err).Msg("failed marshalling")
 		return err
 	}
 	data := base64.StdEncoding.EncodeToString(b)
-	_, err = s.in.Write([]byte(data + "\n"))
-	return err
+	if _, err = s.in.Write([]byte(data + "\n")); err != nil {
+		log.Debug().Err(err).Msg("failed writing")
+		return err
+	}
+	return s.in.Sync()
 }
 
