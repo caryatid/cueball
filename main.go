@@ -43,7 +43,7 @@ func (s *StageWorker) Stage1() error {
 func (s *StageWorker) Stage2() error {
 	s.Printer()
 	if s.Number < 4 {
-		s.Number = 10
+		s.Number = rand.Int() % 10
 		return fmt.Errorf("an error")
 	}
 	return nil
