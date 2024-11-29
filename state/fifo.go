@@ -3,8 +3,9 @@ package state
 import(
 //	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-
-	"cueball/worker"
+	"golang.org/x/sync/errgroup"
+	"context"
+	"cueball"
 	"sync"
 	"io/fs"
 	"syscall"
@@ -14,20 +15,34 @@ import(
 	"encoding/base64"
 )
 
+var pre = ".cue"
+
+func (f *Fifo) Group(ctx context.Context) *errgroup.Group {
+	if f.group == nil {
+		f.group, _ = errgroup.WithContext(ctx)
+	}
+	return f.group
+}
+
 type Fifo struct {
 	// TODO !!! apparently Windoze does not have fifo's wtf.
 	m sync.Mutex
 	in *os.File
 	out *os.File
-	workq chan worker.Worker
+	workq chan cueball.Worker
+	group *errgroup.Group
 }
 
-func NewFifo(fname string, size int) (*Fifo, error) {
+func NewFifo(name string, size int) (*Fifo, error) {
 	var err error
 	if size <= 0 {
 		size = 1
 	}
-	s := &Fifo{workq: make(chan worker.Worker, size)}
+	if err = os.Mkdir(pre, 0700); err != nil {
+		return nil, err
+	}
+	fname := pre + "/" + name
+	s := &Fifo{workq: make(chan cueball.Worker, size)}
 	if _, err := os.Stat(fname); err != nil {
 		log.Debug().Err(err).Msg("making fifo")
 		if err := syscall.Mkfifo(fname, 0644); err != nil {
@@ -66,46 +81,73 @@ func NewFifo(fname string, size int) (*Fifo, error) {
 	return s, nil
 }
 
-func (s *Fifo) Channel() chan worker.Worker {
+func (s *Fifo) Channel() chan cueball.Worker {
 	return s.workq
 }
 
-func (s *Fifo) Dequeue(w worker.Worker) {
-	w.Group().Go(func () error {
+func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
+	d, err := marshal(w)
+	if err != nil {
+		return err
+	}
+	// TODO fixup State call
+	dir := pre + "/" + w.Name() + "/" + w.State("")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(dir + "/" + w.ID().String(), os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	if _, err = f.Write(append(d, '\n')); err != nil {
+		log.Debug().Err(err).Msg("failed writing")
+		return err
+	}
+	return f.Sync()
+}
+
+func unmarshal (data string, w cueball.Worker) error {
+	b, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		log.Debug().Err(err).Msg("failed decoding")
+		return err
+	}
+	return json.Unmarshal(b, w)
+}
+
+func (s *Fifo) Dequeue(ctx context.Context, w cueball.Worker) {
+	s.Group(ctx).Go(func () error {
 		for {
 			data, err := bufio.NewReader(s.out).ReadString('\n')
 			if err != nil {
 				log.Debug().Err(err).Msg("failed reading")
 				return err
 			}
-			b, err := base64.StdEncoding.DecodeString(data)
-			if err != nil {
-				log.Debug().Err(err).Msg("failed decoding")
-				return err
-			}
 			ww := w.New()
-			err = json.Unmarshal(b, ww)
-			if err != nil {
-				log.Debug().Err(err).Msg("failed unmarshalling")
-				return err
-			}
+			unmarshal(data, ww)
 			ww.FuncInit()
 			s.workq <- ww
 		}
 	})
 }
 
-func (s *Fifo) Enqueue(w worker.Worker) error {
-	s.m.Lock()
-	defer s.m.Unlock()
-	w.ID()
+func marshal(w cueball.Worker) ([]byte, error) {
 	b, err := json.Marshal(w)
 	if err != nil {
 		log.Debug().Err(err).Msg("failed marshalling")
-		return err
+		return nil, err
 	}
-	data := base64.StdEncoding.EncodeToString(b)
-	if _, err = s.in.Write([]byte(data + "\n")); err != nil {
+	data := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
+	base64.StdEncoding.Encode(data, b)
+	return data, nil
+}
+
+func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+	dir := pre + "/" + w.Name() + "/" + w.State("")
+	data, err := marshal(w)
+	if _, err = s.in.Write(append(data, '\n')); err != nil {
 		log.Debug().Err(err).Msg("failed writing")
 		return err
 	}

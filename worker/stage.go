@@ -3,7 +3,6 @@ package worker
 import (
 	_ "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-
 	"math/rand"
 	"cueball"
 	"cueball/execute"
@@ -34,7 +33,6 @@ func (s *StageWorker) Printer() {
 func (s *StageWorker) New() cueball.Worker {
 	sw := StageWorker{Exec: &execute.Exec{}}
 	sw.ID()
-	sw.Group()
 	return &sw
 }
 

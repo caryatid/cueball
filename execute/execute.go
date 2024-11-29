@@ -6,11 +6,9 @@ import (
 	"context"
 	"cueball"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 	"errors"
 )
 
-type Method func() error 
 
 type EndError struct {}
 
@@ -18,29 +16,35 @@ func (e *EndError) Error() string {
 	return "iteration complete"
 }
 
+type StateStr string
+
 type Exec struct {
 	Id uuid.UUID
 	Count int
 	Current int
 	Error string
-	Sequence []Method `json:"-"`
+	state StateStr
+	Sequence []cueball.Method `json:"-"`
 }
 
 
 func Run(s cueball.State) error { 
-	g, _ := errgroup.WithContext(context.Background()) // TODO
+	ctx := context.Background()
 	for {
 		select {
 		case w := <- s.Channel():
-			g.Go(func () error { 
+			w.State("START")
+			s.Group(ctx).Go(func () error { 
 				err := w.Next()
 				if err != nil && errors.Is(err, &EndError{}) {
+					w.State("DONE")
 					return nil
 				} else if err != nil {
+					w.State("RETRY")
 					log.Debug().Err(err).Interface("worker", w).
 					Msg("re-enqueue")
 				}
-				s.Enqueue(w)
+				s.Persist(ctx, w)
 				return err
 			})
 		}
@@ -48,15 +52,18 @@ func Run(s cueball.State) error {
 	
 }
 
-func (e *Exec) Group() *errgroup.Group {
-	if e.Group == nil {
-		e.Group, err := errgroup.WithContext(
-}
 func (e *Exec) ID() uuid.UUID {
 	if e.Id == uuid.Nil {
 		e.Id, _ = uuid.NewRandom() // TODO error handling
 	}
 	return e.Id
+}
+
+func (e *Exec) State (s string) string {
+	if s != "" {
+		e.state = StateStr(s) 
+	}
+	return string(e.state)
 }
 
 func (e *Exec) RegError(err error)  {
@@ -77,7 +84,7 @@ func (e *Exec) Next() error {
 	return nil
 }
 
-func (e *Exec) Load(method... Method) {
+func (e *Exec) Load(method... cueball.Method) {
 	e.Sequence = append(e.Sequence, method...)
 }
 
