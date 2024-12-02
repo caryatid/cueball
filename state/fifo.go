@@ -26,6 +26,11 @@ func (f *Fifo) Group(ctx context.Context) *errgroup.Group {
 	return f.group
 }
 
+func (s *Fifo) Channel() chan cueball.Worker {
+	return s.workq
+}
+
+
 type Fifo struct {
 	// TODO !!! apparently Windoze does not have fifo's wtf.
 	m sync.Mutex
@@ -81,10 +86,6 @@ func NewFifo(name string, size int) (*Fifo, error) {
 	}
 	
 	return s, nil
-}
-
-func (s *Fifo) Channel() chan cueball.Worker {
-	return s.workq
 }
 
 func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
