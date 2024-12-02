@@ -1,8 +1,7 @@
 package execute
 
 import (
-	_ "github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
+	// "github.com/rs/zerolog/log"
 	"context"
 	"cueball"
 	"github.com/google/uuid"
@@ -10,20 +9,12 @@ import (
 )
 
 
-type EndError struct {}
-
-func (e *EndError) Error() string {
-	return "iteration complete"
-}
-
-type StateStr string
-
 type Exec struct {
 	Id uuid.UUID
 	Count int
 	Current int
 	Error string
-	state StateStr
+	state cueball.States
 	Sequence []cueball.Method `json:"-"`
 }
 
@@ -33,16 +24,12 @@ func Run(s cueball.State) error {
 	for {
 		select {
 		case w := <- s.Channel():
-			w.State("START")
 			s.Group(ctx).Go(func () error { 
 				err := w.Next()
-				if err != nil && errors.Is(err, &EndError{}) {
-					w.State("DONE")
+				if err != nil && errors.Is(err, &cueball.EndError{}) {
 					return nil
 				} else if err != nil {
-					w.State("RETRY")
-					log.Debug().Err(err).Interface("worker", w).
-					Msg("re-enqueue")
+					w.SetState("RETRY")
 				}
 				s.Persist(ctx, w)
 				return err
@@ -59,11 +46,17 @@ func (e *Exec) ID() uuid.UUID {
 	return e.Id
 }
 
-func (e *Exec) State (s string) string {
-	if s != "" {
-		e.state = StateStr(s) 
+func (e *Exec) SetState (s string) error {
+	i, ok := cueball.StateInt[s]
+	if !ok { 
+		return new(cueball.EnumError)
 	}
-	return string(e.state)
+	e.state	= cueball.States(i)
+	return nil
+}
+
+func (e *Exec)State () string {
+	return cueball.StateStr[int(e.state)] 
 }
 
 func (e *Exec) RegError(err error)  {
@@ -73,7 +66,7 @@ func (e *Exec) RegError(err error)  {
 func (e *Exec) Next() error {
 	e.Count++
 	if e.Current >= len(e.Sequence) {
-		return new(EndError)
+		return new(cueball.EndError)
 	}
 	err := e.Sequence[e.Current]()
 	if err != nil {

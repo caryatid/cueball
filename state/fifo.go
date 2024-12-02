@@ -1,3 +1,5 @@
+// state package for fifo
+// TODO calling uuid new too often
 package state
 
 import(
@@ -90,8 +92,7 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
 	if err != nil {
 		return err
 	}
-	// TODO fixup State call
-	dir := pre + "/" + w.Name() + "/" + w.State("")
+	dir := pre + "/" + w.Name()
 	if err := os.Mkdir(dir, 0700); err != nil {
 		return err
 	}
@@ -143,14 +144,36 @@ func marshal(w cueball.Worker) ([]byte, error) {
 }
 
 func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
-	s.m.Lock()
-	defer s.m.Unlock()
-	dir := pre + "/" + w.Name() + "/" + w.State("")
-	data, err := marshal(w)
-	if _, err = s.in.Write(append(data, '\n')); err != nil {
-		log.Debug().Err(err).Msg("failed writing")
-		return err
-	}
-	return s.in.Sync()
+	s.Group(ctx).Go(func () error {
+		s.m.Lock()
+		defer s.m.Unlock()
+		dir := pre + "/" + w.Name()
+		dirf, err := os.ReadDir(dir)
+		if err != nil { 
+			return err
+		}
+		ww := w.New() // reuse
+		for _, de := range dirf {
+			if de.IsDir() {
+				continue
+			}
+			f, err := os.Open(dir + "/" de.Name())
+			if err != nil {
+				return err
+			}
+			data, err := bufio.NewReader(f).ReadString('\n')
+			if err != nil {
+				return err
+			}
+			unmarshal(data, ww)
+			state := w.State()
+			// TODO HERE
+		}
+		data, err := marshal(w)
+		if _, err = s.in.Write(append(data, '\n')); err != nil {
+			log.Debug().Err(err).Msg("failed writing")
+			return err
+		}
+		return s.in.Sync()
 }
 
