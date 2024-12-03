@@ -13,7 +13,7 @@ type Method func() error
 
 type Operation interface {
 	Group() *errgroup.Group
-	Load(string, Worker)
+	Load(Worker)
 	Workers() map[string]Worker
 	Channel() chan Worker
 }
@@ -24,10 +24,9 @@ type State interface {
 	Persist(context.Context, Worker, Stage) error
 	// enqueue's a single worker
 	Enqueue(context.Context, Worker) error
-	// below MUST be implemented as long running go routines
 	// gets work from queue. if in worker set puts onto channel
-	Dequeue(context.Context)
-	// gets work from persistence and puts on queue (TODO put in external process)
+	Dequeue(context.Context) error
+	// gets work from persistence and puts on queue
 	LoadWork(context.Context) error
 }
 
@@ -103,3 +102,4 @@ func Run(ctx context.Context, s State) error {
 	}
 
 }
+

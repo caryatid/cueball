@@ -25,8 +25,8 @@ func NewOp(g *errgroup.Group) (op *Op) {
 	return
 }
 
-func (o *Op) Load(name string, w cueball.Worker) {
-	o.workers[name] = w
+func (o *Op) Load(w cueball.Worker) {
+	o.workers[w.Name()] = w
 }
 
 func (o *Op) Group() *errgroup.Group {
@@ -41,7 +41,7 @@ func (o *Op) Workers() map[string]cueball.Worker {
 	return o.workers
 }
 
-func unmarshal(data string, w cueball.Worker) error {
+func unmarshal(data string, w json.Unmarshaler) error {
 	b, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
 		log.Debug().Err(err).Msg("failed decoding")
@@ -50,7 +50,7 @@ func unmarshal(data string, w cueball.Worker) error {
 	return json.Unmarshal(b, w)
 }
 
-func marshal(w cueball.Worker) ([]byte, error) {
+func marshal(w json.Marshaler) ([]byte, error) {
 	b, err := json.Marshal(w)
 	if err != nil {
 		log.Debug().Err(err).Msg("failed marshalling")
