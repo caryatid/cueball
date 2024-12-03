@@ -2,45 +2,34 @@
 // TODO calling uuid new too often
 package state
 
-import(
-//	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
+import (
+	//	"github.com/rs/zerolog"
+	"bufio"
 	"context"
 	"cueball"
-	"sync"
+	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 	"io/fs"
-	"syscall"
 	"os"
-	"bufio"
-	"encoding/json"
-	"encoding/base64"
+	"syscall"
+	"time"
 )
 
 var pre = ".cue"
 
-func (f *Fifo) Group(ctx context.Context) *errgroup.Group {
-	if f.group == nil {
-		f.group, _ = errgroup.WithContext(ctx)
-	}
-	return f.group
+type Pack struct {
+	Name        string
+	WorkerCodec string
 }
-
-func (s *Fifo) Channel() chan cueball.Worker {
-	return s.workq
-}
-
 
 type Fifo struct {
 	// TODO !!! apparently Windoze does not have fifo's wtf.
-	m sync.Mutex
-	in *os.File
+	*Op
+	in  *os.File
 	out *os.File
-	workq chan cueball.Worker
-	group *errgroup.Group
 }
 
-func NewFifo(name string, size int) (*Fifo, error) {
+func NewFifo(ctx context.Context, g *errgroup.Group, name string, size int) (*Fifo, error) {
 	var err error
 	if size <= 0 {
 		size = 1
@@ -49,7 +38,8 @@ func NewFifo(name string, size int) (*Fifo, error) {
 		return nil, err
 	}
 	fname := pre + "/" + name
-	s := &Fifo{workq: make(chan cueball.Worker, size)}
+	s := new(Fifo)
+	s.Op = NewOp(g)
 	if _, err := os.Stat(fname); err != nil {
 		log.Debug().Err(err).Msg("making fifo")
 		if err := syscall.Mkfifo(fname, 0644); err != nil {
@@ -79,12 +69,12 @@ func NewFifo(name string, size int) (*Fifo, error) {
 		log.Debug().Err(err).Msg("failed opening fifo for reading")
 		return nil, err
 	}
-	err = <- check
+	err = <-check
 	if err != nil {
 		log.Debug().Err(err).Msg("failed opening fifo for writing")
 		return nil, err
 	}
-	
+
 	return s, nil
 }
 
@@ -97,7 +87,8 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
 	if err := os.Mkdir(dir, 0700); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(dir + "/" + w.ID().String(), os.O_WRONLY, 0)
+	f, err := os.OpenFile(dir+"/"+w.ID().String()+":"+
+		string(time.Now().UnixNano()), os.O_WRONLY, 0)
 	if err != nil {
 		return err
 	}
@@ -108,49 +99,34 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
 	return f.Sync()
 }
 
-func unmarshal (data string, w cueball.Worker) error {
-	b, err := base64.StdEncoding.DecodeString(data)
-	if err != nil {
-		log.Debug().Err(err).Msg("failed decoding")
-		return err
-	}
-	return json.Unmarshal(b, w)
-}
-
 func (s *Fifo) Dequeue(ctx context.Context, w cueball.Worker) {
-	s.Group(ctx).Go(func () error {
+	s.Group().Go(func() error {
 		for {
 			data, err := bufio.NewReader(s.out).ReadString('\n')
 			if err != nil {
 				log.Debug().Err(err).Msg("failed reading")
 				return err
 			}
-			ww := w.New()
-			unmarshal(data, ww)
-			ww.FuncInit()
-			s.workq <- ww
+			p := new(Pack)
+			if w_, ok := s.Workers()[p.Name]; ok {
+				ww := w_.New()
+				unmarshal(data, ww)
+				ww.FuncInit()
+				s.Channel() <- ww
+			} else {
+				s.enqueue(ctx, p.Name, p.WorkerCodec)
+			}
 		}
 	})
 }
 
-func marshal(w cueball.Worker) ([]byte, error) {
-	b, err := json.Marshal(w)
-	if err != nil {
-		log.Debug().Err(err).Msg("failed marshalling")
-		return nil, err
-	}
-	data := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
-	base64.StdEncoding.Encode(data, b)
-	return data, nil
-}
-
 func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
-	s.Group(ctx).Go(func () error {
-		s.m.Lock()
-		defer s.m.Unlock()
+	s.Group().Go(func() error {
+		s.Lock()
+		defer s.Unlock()
 		dir := pre + "/" + w.Name()
 		dirf, err := os.ReadDir(dir)
-		if err != nil { 
+		if err != nil {
 			return err
 		}
 		ww := w.New() // reuse
@@ -158,7 +134,7 @@ func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
 			if de.IsDir() {
 				continue
 			}
-			f, err := os.Open(dir + "/" de.Name())
+			f, err := os.Open(dir + "/" + de.Name())
 			if err != nil {
 				return err
 			}
@@ -167,8 +143,6 @@ func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
 				return err
 			}
 			unmarshal(data, ww)
-			state := w.State()
-			// TODO HERE
 		}
 		data, err := marshal(w)
 		if _, err = s.in.Write(append(data, '\n')); err != nil {
@@ -176,5 +150,6 @@ func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
 			return err
 		}
 		return s.in.Sync()
+	})
+	return nil
 }
-

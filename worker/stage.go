@@ -1,27 +1,24 @@
 package worker
 
 import (
+	"cueball"
+	"fmt"
 	_ "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"math/rand"
-	"cueball"
-	"cueball/execute"
-	"fmt"
 )
 
-
 type StageWorker struct {
-	*execute.Exec 
-	Word string
+	*Exec
+	Word   string
 	Number int
 }
 
-
-func (s *StageWorker)Name() string {
+func (s *StageWorker) Name() string {
 	return "stage-worker"
 }
 
-func (s *StageWorker)FuncInit() error {
+func (s *StageWorker) FuncInit() error {
 	s.Load(s.Stage1, s.Stage2, s.Stage3)
 	return nil
 }
@@ -31,9 +28,9 @@ func (s *StageWorker) Printer() {
 }
 
 func (s *StageWorker) New() cueball.Worker {
-	sw := StageWorker{Exec: &execute.Exec{}}
+	sw := &StageWorker{Exec: &Exec{}}
 	sw.ID()
-	return &sw
+	return sw
 }
 
 func (s *StageWorker) Stage1() error {
@@ -55,4 +52,3 @@ func (s *StageWorker) Stage3() error {
 	s.Printer()
 	return nil
 }
-
