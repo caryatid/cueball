@@ -16,10 +16,23 @@ import (
 	"time"
 )
 
+// TODO used prepared statements
+var persistfmt = `
+INSERT INTO execution_log (id, stage, worker, data)
+VALUES($1, $2, $3, $4);
+`
+
+var loadworkfmt = `
+SELECT data FROM execution_state
+WHERE worker = $1
+AND stage = ANY($2);
+`
+
 type PG struct {
 	*Op
 	DB *pgx.Conn
 	Nats *nats.Conn
+	Sub map[string]*nats.Subscription
 }
 
 func NewPG(ctx context.Context, g *errgroup.Group, dburl string, natsurl string) (*PG, error) {
@@ -38,89 +51,86 @@ func NewPG(ctx context.Context, g *errgroup.Group, dburl string, natsurl string)
 }
 
 func (s *PG) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage) error {
-	persistfmt = `
-		INSERT INTO execution_log (id, stage, worker)
-		VALUES($1, $2, $3);
-	`
 	b, err := json.Marshal(w)
 	if err != nil {
 		return err
 	}
 	// does uuid.UUID have Scanner/Valuer implemented?
-	_, err := s.DB.Exec(ctx, persistfmt, w.ID().String(), cueball.StageStr[int(stage)], b)
+	_, err := s.DB.Exec(ctx, persistfmt, w.ID().String(),
+		w.Name(), cueball.StageStr[int(stage)], b)
 	return err
 }
 
 func (s *PG) Dequeue(ctx context.Context) error {
-	s.Nats.Subscribe(
-	data, err := bufio.NewReader(s.out).ReadString('\n')
-	if err != nil {
-		log.Debug().Err(err).Msg("failed reading")
-		return err
-	}
-	p := new(Pack)
-	if err := unmarshal(data, p); err != nil {
-		return err
-	}
-	if w, ok := s.Workers()[p.Name]; ok {
-		ww := w.New()
-		if err := unmarshal(p.Codec, ww); err != nil {
-			return err
+	g, _ := s.Group().WithContext(ctx)
+	for name, w := range s.Workers() {
+		var s *nats.Subscription
+		var ok bool
+		var err error
+		s, ok = s.Sub[name]; !ok {
+			s, err = s.Nats.QueueSubscribeSync("pg."+name, name) 
+			if err != nil {
+				return err
+			}
+			s.Sub[name] = s
 		}
-		ww.FuncInit()
-		s.Channel() <- ww
-	} else { // re-enqueue if not a known worker type. stop infinite loops, TTL?
-		if err := s.enqueue(p); err != nil {
+		g.Go(func () error {
+			ww := w.New()
+			msg, err := s.NextMsg(time.Second * 1)
+			if err != nil && !errors.Is(err, nats.ErrTimeout) {
+				return err
+			}
+			if err := json.Unmarshal(msg, ww); err != nil {
+				return err
+			}
+			ww.FuncInit()
+			s.Channel() <- ww
+			return nil
+		})
+	}
+	return g.Wait()
+}
+
+func (s *Pg) Enqueue(ctx context.Context, w cueball.Worker) error {
+	//// no lock needed
+	// s.Lock()
+	// defer s.Unlock()
+	data, err := marshal(w)
+	if err != nil {
+		return err
+	}
+	s.Persist(ctx, w, cueball.RUNNING)
+	return s.Nats.Publish("pg."+w.Name(), data)
+}
+
+func (s *Fifo) LoadWork(ctx context.Context) error {
+	s.Lock()
+	defer s.Unlock()
+	for name, w := range s.Workers() {
+		// TODO begin transaction.
+		err := func () error {
+			rows, err := s.DB.QueryContext(ctx, loadworkfmt, name,
+				[]string{cueball.RETRY.String(),
+					cueball.NEXT.String()})
+			if err != nil {
+				// TODO
+			}
+			defer rows.Close()
+			ww := w.New()
+			for rows.Next() {
+				if err := rows.Scan(ww); err != nil {
+					return err
+				}
+				if err := s.Enqueue(ctx, ww); err != nil {
+					return err
+				}
+			}
+			return nil
+		}()
+		if err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func (s *Fifo) enqueue(p Pack) error { // allows re-queuing a packed item
-	data, err := marshsal(p)
-	if _, err = s.in.Write(append(data, '\n')); err != nil {
-		log.Debug().Err(err).Msg("failed writing")
-		return err
-	}
-	return s.in.Sync()
-}
-
-func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
-	s.Lock()
-	defer s.Unlock()
-	data, err := marshal(w)
-	return s.enqueue(&Pack{Name: w.Name(), Codec: data})
-}
-
-func (s *Fifo) LoadWork(ctx context.Context) {
-	for name, w := range s.Workers() {
-		dir := pre + "/" + w.Name()
-		if err := os.Mkdir(dir, 0700); err != nil {
-			return err
-		}
-		files, _ := os.ReadDir(dir)
-		var curid string
-		var pret int
-		x := make(map[string]string)
-		for _, f := range files {
-			id, ts, _ := strings.Split(f, ":")
-			curt, _ := strconv.Atoi(ts)
-			if id != curid {
-				curid = id
-				x[id]f.Name()
-				continue
-			} else if curt > pret {
-				x[id]f.Name()
-			}
-		}
-		for _, f := range x {
-			_, _, stage := strings.Split(f, ":")
-			if stage == "NEXT" || stage == "RETRY" {
-				// READ, enqueue, persist as RUNNING
-			}
-		}
-		
-	}
 }
 

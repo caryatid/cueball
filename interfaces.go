@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type Method func() error
+type Method func(context.Context) error
 
 type Operation interface {
 	Group() *errgroup.Group

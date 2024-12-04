@@ -12,7 +12,8 @@ CREATE TABLE execution_log (
 	id UUID NOT NULL DEFAULT gen_random_uuid(), 
 	stage stage,
 	time TIMESTAMP DEFAULT current_timestamp(),
-	worker JSONB
+	worker TEXT,
+	data JSONB
 );
 
 CREATE VIEW execution_state (
