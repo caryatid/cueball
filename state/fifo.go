@@ -74,7 +74,6 @@ func NewFifo(ctx context.Context, g *errgroup.Group, name string, size int) (*Fi
 		log.Debug().Err(err).Msg("failed opening fifo for writing")
 		return nil, err
 	}
-
 	return s, nil
 }
 
@@ -169,5 +168,25 @@ func (s *Fifo) LoadWork(ctx context.Context) {
 		}
 		
 	}
+}
+
+func unmarshal(data string, w json.Unmarshaler) error {
+	b, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		log.Debug().Err(err).Msg("failed decoding")
+		return err
+	}
+	return json.Unmarshal(b, w)
+}
+
+func marshal(w json.Marshaler) ([]byte, error) {
+	b, err := json.Marshal(w)
+	if err != nil {
+		log.Debug().Err(err).Msg("failed marshalling")
+		return nil, err
+	}
+	data := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
+	base64.StdEncoding.Encode(data, b)
+	return data, nil
 }
 

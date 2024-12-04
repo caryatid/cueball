@@ -47,7 +47,7 @@ func NewPG(ctx context.Context, g *errgroup.Group, dburl string, natsurl string)
 	if err != nil {
 		return nil, err
 	}
-	return nil
+	return s, nil
 }
 
 func (s *PG) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage) error {
@@ -61,41 +61,8 @@ func (s *PG) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage)
 	return err
 }
 
-func (s *PG) Dequeue(ctx context.Context) error {
-	g, _ := s.Group().WithContext(ctx)
-	for name, w := range s.Workers() {
-		var s *nats.Subscription
-		var ok bool
-		var err error
-		s, ok = s.Sub[name]; !ok {
-			s, err = s.Nats.QueueSubscribeSync("pg."+name, name) 
-			if err != nil {
-				return err
-			}
-			s.Sub[name] = s
-		}
-		g.Go(func () error {
-			ww := w.New()
-			msg, err := s.NextMsg(time.Second * 1)
-			if err != nil && !errors.Is(err, nats.ErrTimeout) {
-				return err
-			}
-			if err := json.Unmarshal(msg, ww); err != nil {
-				return err
-			}
-			ww.FuncInit()
-			s.Channel() <- ww
-			return nil
-		})
-	}
-	return g.Wait()
-}
-
 func (s *Pg) Enqueue(ctx context.Context, w cueball.Worker) error {
-	//// no lock needed
-	// s.Lock()
-	// defer s.Unlock()
-	data, err := marshal(w)
+	data, err := json.Marshal(w)
 	if err != nil {
 		return err
 	}
@@ -103,34 +70,69 @@ func (s *Pg) Enqueue(ctx context.Context, w cueball.Worker) error {
 	return s.Nats.Publish("pg."+w.Name(), data)
 }
 
-func (s *Fifo) LoadWork(ctx context.Context) error {
-	s.Lock()
-	defer s.Unlock()
+
+func (s *PG) Dequeue(ctx context.Context) error {
+	g, _ := s.Group().WithContext(ctx)
 	for name, w := range s.Workers() {
-		// TODO begin transaction.
-		err := func () error {
-			rows, err := s.DB.QueryContext(ctx, loadworkfmt, name,
-				[]string{cueball.RETRY.String(),
-					cueball.NEXT.String()})
+		var err error
+		if _, ok := s.Sub[name]; !ok {
+			s.Sub[name], err = s.Nats.QueueSubscribeSync("pg."+name, name) 
 			if err != nil {
-				// TODO
+				return err
 			}
-			defer rows.Close()
-			ww := w.New()
-			for rows.Next() {
-				if err := rows.Scan(ww); err != nil {
-					return err
-				}
-				if err := s.Enqueue(ctx, ww); err != nil {
-					return err
-				}
-			}
-			return nil
-		}()
-		if err != nil {
-			return err
 		}
+		g.Go(func () error {
+			ww := w.New()
+			for {
+				msg, err := s.Sub[name].NextMsgWithContext(ctx)
+				if err != nil {
+					return err
+				}
+				if err := json.Unmarshal(msg, ww); err != nil {
+					return err
+				}
+				ww.FuncInit()
+				s.Channel() <- ww
+			}
+		})
 	}
-	return nil
+	return g.Wait()
+}
+
+func (s *Pg) LoadWork(ctx context.Context) error {
+	g, ctx := s.Group().WithContext(ctx) 
+	for name, w := range s.Workers() {
+		g.Go(func () error {
+			tick := time.NewTicker(500 * time.Millisecond)
+			for { 
+				select {
+				case <-tick.C:
+					err := func () error { // anonfunc to facilitate defers
+						s.Lock()
+						defer s.Unlock()
+						// TODO begin transaction.
+						rows, err := s.DB.QueryContext(ctx, loadworkfmt, name,
+							[]string{cueball.RETRY.String(),
+								cueball.NEXT.String()})
+						if err != nil {
+							return err	
+						}
+						defer rows.Close()
+						ww := w.New()
+						for rows.Next() {
+							if err := rows.Scan(ww); err != nil {
+								return err
+							}
+							if err := s.Enqueue(ctx, ww); err != nil {
+								return err
+							}
+						}
+						return nil
+					}()
+				}
+			}
+		})
+	}
+	return g.Wait()
 }
 

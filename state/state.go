@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"cueball"
 	"encoding/base64"
 	"encoding/json"
@@ -41,22 +42,12 @@ func (o *Op) Workers() map[string]cueball.Worker {
 	return o.workers
 }
 
-func unmarshal(data string, w json.Unmarshaler) error {
-	b, err := base64.StdEncoding.DecodeString(data)
-	if err != nil {
-		log.Debug().Err(err).Msg("failed decoding")
-		return err
-	}
-	return json.Unmarshal(b, w)
-}
-
-func marshal(w json.Marshaler) ([]byte, error) {
-	b, err := json.Marshal(w)
-	if err != nil {
-		log.Debug().Err(err).Msg("failed marshalling")
-		return nil, err
-	}
-	data := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
-	base64.StdEncoding.Encode(data, b)
-	return data, nil
+func (o *Op) Start(ctx context.Context, s cueball.State) error {
+	o.Group().Go(func () error {
+		return s.LoadWork(ctx)
+	})
+	o.Group().Go(func () error {
+		return s.Dequeue(ctx)
+	})
+	return o.Group().Wait()
 }

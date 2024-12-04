@@ -16,6 +16,7 @@ type Operation interface {
 	Load(Worker)
 	Workers() map[string]Worker
 	Channel() chan Worker
+	Start(context.Context, State) error
 }
 
 type State interface {
@@ -30,14 +31,14 @@ type State interface {
 	LoadWork(context.Context) error
 }
 
-type Executer interface {
+type Execution interface {
 	Next() error
 	Load(...Method)
 	ID() uuid.UUID
 }
 
 type Worker interface {
-	Executer
+	Execution
 	New() Worker // TODO no malloc?
 	Name() string
 	FuncInit() error
