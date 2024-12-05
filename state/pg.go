@@ -3,14 +3,12 @@
 package state
 
 import (
-	"github.com/rs/zerolog"
 	"context"
 	"cueball"
 	"encoding/json"
-	"golang.org/x/sync/errgroup"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
-	"time"
+	"golang.org/x/sync/errgroup"
 )
 
 // TODO used prepared statements
@@ -27,15 +25,15 @@ AND stage = ANY($2);
 
 type PG struct {
 	*Op
-	DB *pgxpool.Conn
+	DB   *pgxpool.Conn
 	Nats *nats.Conn
-	Sub map[string]*nats.Subscription
+	Sub  map[string]*nats.Subscription
 }
 
 func NewPG(ctx context.Context, g *errgroup.Group, dburl string, natsurl string) (*PG, error) {
 	s := new(PG)
 	s.Op = NewOp(g)
-	pool, err := pgxpool.New(ctx, dburl) 
+	pool, err := pgxpool.New(ctx, dburl)
 	s.DB, err = pool.Acquire(ctx)
 	if err != nil {
 		return nil, err
@@ -67,68 +65,45 @@ func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
 	return s.Nats.Publish("pg."+w.Name(), data)
 }
 
-func (s *PG) Dequeue(ctx context.Context) error {
-	g, _ := errgroup.WithContext(ctx)
-	for name, w := range s.Workers() {
-		var err error
-		if _, ok := s.Sub[name]; !ok {
-			s.Sub[name], err = s.Nats.QueueSubscribeSync("pg."+name, name) 
-			if err != nil {
-				return err
-			}
+func (s *PG) Dequeue(ctx context.Context, w cueball.Worker) error {
+	var err error
+	name := w.Name()
+	if _, ok := s.Sub[name]; !ok {
+		s.Sub[name], err = s.Nats.QueueSubscribeSync("pg."+name, name)
+		if err != nil {
+			return err
 		}
-		g.Go(func () error {
-			ww := w.New()
-			for {
-				msg, err := s.Sub[name].NextMsgWithContext(ctx)
-				if err != nil {
-					return err
-				}
-				if err := json.Unmarshal(msg.Data, ww); err != nil {
-					return err
-				}
-				ww.FuncInit()
-				msg.AckSync()
-				s.Channel() <- ww
-			}
-		})
 	}
-	return g.Wait()
+	ww := w.New()
+	msg, err := s.Sub[name].NextMsgWithContext(ctx)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(msg.Data, ww); err != nil {
+		return err
+	}
+	ww.FuncInit()
+	msg.AckSync()
+	s.Channel() <- ww
+	return nil
 }
 
-func (s *PG) LoadWork(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx) 
-	for name, w := range s.Workers() {
-		g.Go(func () error {
-			tick := time.NewTicker(500 * time.Millisecond)
-			for { 
-				select {
-				case <-tick.C:
-					err := func () error { // anonfunc to facilitate defers
-						// TODO begin transaction.
-						rows, err := s.DB.Query(ctx, loadworkfmt, name,
-							[]string{cueball.RETRY.String(),
-								cueball.NEXT.String()})
-						if err != nil {
-							return err	
-						}
-						defer rows.Close()
-						ww := w.New()
-						for rows.Next() {
-							if err := rows.Scan(ww); err != nil {
-								return err
-							}
-							if err := s.Enqueue(ctx, ww); err != nil {
-								return err
-							}
-						}
-						return nil
-					}()
-					return err
-				}
-			}
-		})
+func (s *PG) LoadWork(ctx context.Context, w cueball.Worker) error {
+	rows, err := s.DB.Query(ctx, loadworkfmt, w.Name(),
+		[]string{cueball.RETRY.String(),
+			cueball.NEXT.String()})
+	if err != nil {
+		return err
 	}
-	return g.Wait()
+	defer rows.Close()
+	for rows.Next() {
+		ww := w.New()
+		if err := rows.Scan(ww); err != nil {
+			return err
+		}
+		if err := s.Enqueue(ctx, ww); err != nil {
+			return err
+		}
+	}
+	return nil
 }
-

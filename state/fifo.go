@@ -8,21 +8,20 @@ import (
 	"context"
 	"cueball"
 	"encoding/base64"
-	"github.com/rs/zerolog"
+	"encoding/json"
 	"golang.org/x/sync/errgroup"
 	"io/fs"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
-	"strings"
-	"strconv"
-	"encoding/json"
 )
 
 var pre = ".cue"
 
 type Pack struct {
-	Name        string
+	Name  string
 	Codec string
 }
 
@@ -36,7 +35,7 @@ type Fifo struct {
 
 func NewFifo(ctx context.Context, g *errgroup.Group, name, dir string) (*Fifo, error) {
 	var err error
-	log := zerolog.Ctx(ctx)
+	log := cueball.Lc(ctx)
 	s := new(Fifo)
 	s.Op = NewOp(g)
 	if err = os.Mkdir(dir, 0700); err != nil {
@@ -84,7 +83,7 @@ func NewFifo(ctx context.Context, g *errgroup.Group, name, dir string) (*Fifo, e
 }
 
 func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage) error {
-	log := zerolog.Ctx(ctx)
+	log := cueball.Lc(ctx)
 	d, err := marshal(w)
 	if err != nil {
 		return err
@@ -94,7 +93,7 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stag
 		return err
 	}
 	f, err := os.OpenFile(dir+"/"+w.ID().String()+":"+
-		string(time.Now().UnixNano()) + ":" + cueball.StageStr[int(stage)], os.O_WRONLY, 0)
+		string(time.Now().UnixNano())+":"+cueball.StageStr[int(stage)], os.O_WRONLY, 0)
 	if err != nil {
 		return err
 	}
@@ -106,7 +105,7 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stag
 }
 
 func (s *Fifo) Dequeue(ctx context.Context) error {
-	log := zerolog.Ctx(ctx)
+	log := cueball.Lc(ctx)
 	data, err := bufio.NewReader(s.out).ReadString('\n')
 	if err != nil {
 		log.Debug().Err(err).Msg("failed reading")
@@ -187,7 +186,7 @@ func (s *Fifo) LoadWork(ctx context.Context) error {
 				// READ, enqueue, persist as RUNNING
 			}
 		}
-		
+
 	}
 	return nil
 }
@@ -209,4 +208,3 @@ func marshal(w interface{}) ([]byte, error) {
 	base64.StdEncoding.Encode(data, b)
 	return data, nil
 }
-

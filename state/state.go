@@ -37,4 +37,3 @@ func (o *Op) Channel() chan cueball.Worker {
 func (o *Op) Workers() map[string]cueball.Worker {
 	return o.workers
 }
-

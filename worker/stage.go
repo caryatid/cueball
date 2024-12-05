@@ -1,8 +1,8 @@
 package worker
 
 import (
-	"cueball"
 	"context"
+	"cueball"
 	"fmt"
 	_ "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
