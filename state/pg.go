@@ -3,12 +3,11 @@
 package state
 
 import (
-	//	"github.com/rs/zerolog"
+	"github.com/rs/zerolog"
 	"context"
 	"cueball"
 	"encoding/json"
 	"golang.org/x/sync/errgroup"
-	// "database/sql" maybe we avoid?
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"time"
@@ -106,8 +105,6 @@ func (s *PG) LoadWork(ctx context.Context) error {
 				select {
 				case <-tick.C:
 					err := func () error { // anonfunc to facilitate defers
-						s.Lock()
-						defer s.Unlock()
 						// TODO begin transaction.
 						rows, err := s.DB.Query(ctx, loadworkfmt, name,
 							[]string{cueball.RETRY.String(),
