@@ -1,18 +1,22 @@
 // state package for fifo
 // TODO calling uuid new too often
+// COULD DO path handling - if more complete use path/filepath
 package state
 
 import (
-	//	"github.com/rs/zerolog"
 	"bufio"
 	"context"
 	"cueball"
+	"encoding/base64"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 	"io/fs"
 	"os"
 	"syscall"
 	"time"
+	"strings"
+	"strconv"
+	"encoding/json"
 )
 
 var pre = ".cue"
@@ -27,19 +31,20 @@ type Fifo struct {
 	*Op
 	in  *os.File
 	out *os.File
+	dir *os.File
 }
 
-func NewFifo(ctx context.Context, g *errgroup.Group, name string, size int) (*Fifo, error) {
+func NewFifo(ctx context.Context, g *errgroup.Group, name, dir string) (*Fifo, error) {
 	var err error
-	if size <= 0 {
-		size = 1
-	}
-	if err = os.Mkdir(pre, 0700); err != nil {
-		return nil, err
-	}
-	fname := pre + "/" + name
 	s := new(Fifo)
 	s.Op = NewOp(g)
+	if err = os.Mkdir(dir, 0700); err != nil {
+		return nil, err
+	}
+	if s.dir, err = os.Open(dir); err != nil {
+		return nil, err
+	}
+	fname := s.dir.Name() + "/" + name
 	if _, err := os.Stat(fname); err != nil {
 		log.Debug().Err(err).Msg("making fifo")
 		if err := syscall.Mkfifo(fname, 0644); err != nil {
@@ -82,7 +87,7 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stag
 	if err != nil {
 		return err
 	}
-	dir := pre + "/" + w.Name()
+	dir := s.dir.Name() + "/" + w.Name()
 	if err := os.Mkdir(dir, 0700); err != nil {
 		return err
 	}
@@ -123,8 +128,8 @@ func (s *Fifo) Dequeue(ctx context.Context) error {
 	return nil
 }
 
-func (s *Fifo) enqueue(p Pack) error { // allows re-queuing a packed item
-	data, err := marshsal(p)
+func (s *Fifo) enqueue(p *Pack) error { // allows re-queuing a packed item
+	data, err := marshal(p)
 	if _, err = s.in.Write(append(data, '\n')); err != nil {
 		log.Debug().Err(err).Msg("failed writing")
 		return err
@@ -136,41 +141,56 @@ func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
 	s.Lock()
 	defer s.Unlock()
 	data, err := marshal(w)
-	return s.enqueue(&Pack{Name: w.Name(), Codec: data})
+	if err != nil {
+		return err
+	}
+	return s.enqueue(&Pack{Name: w.Name(), Codec: string(data)})
 }
 
-func (s *Fifo) LoadWork(ctx context.Context) {
-	for name, w := range s.Workers() {
-		dir := pre + "/" + w.Name()
+func (s *Fifo) LoadWork(ctx context.Context) error {
+	for _, w := range s.Workers() {
+		dir := s.dir.Name() + "/" + w.Name()
 		if err := os.Mkdir(dir, 0700); err != nil {
 			return err
 		}
 		files, _ := os.ReadDir(dir)
 		var curid string
 		var pret int
+		var err error
 		x := make(map[string]string)
 		for _, f := range files {
-			id, ts, _ := strings.Split(f, ":")
+			ss := strings.Split(f.Name(), ":")
+			if len(ss) < 3 {
+				// TODO fixit
+				return err
+			}
+			id, ts, _ := ss[0], ss[1], ss[2]
 			curt, _ := strconv.Atoi(ts)
 			if id != curid {
 				curid = id
-				x[id]f.Name()
+				x[id] = f.Name()
 				continue
 			} else if curt > pret {
-				x[id]f.Name()
+				x[id] = f.Name()
 			}
 		}
 		for _, f := range x {
-			_, _, stage := strings.Split(f, ":")
+			ss := strings.Split(f, ":")
+			if len(ss) < 3 {
+				// TODO fixit
+				return err
+			}
+			_, _, stage := ss[0], ss[1], ss[2]
 			if stage == "NEXT" || stage == "RETRY" {
 				// READ, enqueue, persist as RUNNING
 			}
 		}
 		
 	}
+	return nil
 }
 
-func unmarshal(data string, w json.Unmarshaler) error {
+func unmarshal(data string, w interface{}) error {
 	b, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
 		log.Debug().Err(err).Msg("failed decoding")
@@ -179,7 +199,7 @@ func unmarshal(data string, w json.Unmarshaler) error {
 	return json.Unmarshal(b, w)
 }
 
-func marshal(w json.Marshaler) ([]byte, error) {
+func marshal(w interface{}) ([]byte, error) {
 	b, err := json.Marshal(w)
 	if err != nil {
 		log.Debug().Err(err).Msg("failed marshalling")

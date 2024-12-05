@@ -3,6 +3,7 @@ package worker
 import (
 	// "github.com/rs/zerolog/log"
 	"cueball"
+	"context"
 	"github.com/google/uuid"
 )
 
@@ -21,13 +22,12 @@ func (e *Exec) ID() uuid.UUID {
 	return e.Id
 }
 
-func (e *Exec) Next() error {
+func (e *Exec) Next(ctx context.Context) error {
 	e.Count++
 	if e.Current >= len(e.sequence) {
-		// TODO set overflow current error
 		return new(cueball.EndError)
 	}
-	err := e.sequence[e.Current]()
+	err := e.sequence[e.Current](ctx)
 	if err != nil {
 		e.Error = err.Error()
 		return err

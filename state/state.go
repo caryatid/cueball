@@ -1,11 +1,7 @@
 package state
 
 import (
-	"context"
 	"cueball"
-	"encoding/base64"
-	"encoding/json"
-	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 	"sync"
 )
@@ -42,12 +38,3 @@ func (o *Op) Workers() map[string]cueball.Worker {
 	return o.workers
 }
 
-func (o *Op) Start(ctx context.Context, s cueball.State) error {
-	o.Group().Go(func () error {
-		return s.LoadWork(ctx)
-	})
-	o.Group().Go(func () error {
-		return s.Dequeue(ctx)
-	})
-	return o.Group().Wait()
-}

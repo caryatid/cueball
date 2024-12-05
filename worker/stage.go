@@ -2,6 +2,7 @@ package worker
 
 import (
 	"cueball"
+	"context"
 	"fmt"
 	_ "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -33,13 +34,13 @@ func (s *StageWorker) New() cueball.Worker {
 	return sw
 }
 
-func (s *StageWorker) Stage1() error {
+func (s *StageWorker) Stage1(ctx context.Context) error {
 	s.Number = rand.Int() % 10
 	s.Printer()
 	return nil
 }
 
-func (s *StageWorker) Stage2() error {
+func (s *StageWorker) Stage2(ctx context.Context) error {
 	s.Printer()
 	if s.Number < 4 {
 		s.Number = rand.Int() % 10
@@ -48,7 +49,7 @@ func (s *StageWorker) Stage2() error {
 	return nil
 }
 
-func (s *StageWorker) Stage3() error {
+func (s *StageWorker) Stage3(ctx context.Context) error {
 	s.Printer()
 	return nil
 }

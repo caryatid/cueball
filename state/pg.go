@@ -4,13 +4,11 @@ package state
 
 import (
 	//	"github.com/rs/zerolog"
-	"bufio"
 	"context"
 	"cueball"
-	"github.com/rs/zerolog/log"
+	"encoding/json"
 	"golang.org/x/sync/errgroup"
 	// "database/sql" maybe we avoid?
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"time"
@@ -30,20 +28,20 @@ AND stage = ANY($2);
 
 type PG struct {
 	*Op
-	DB *pgx.Conn
+	DB *pgxpool.Conn
 	Nats *nats.Conn
 	Sub map[string]*nats.Subscription
 }
 
 func NewPG(ctx context.Context, g *errgroup.Group, dburl string, natsurl string) (*PG, error) {
-	var err error
 	s := new(PG)
 	s.Op = NewOp(g)
-	s.DB, err = pgxpool.New(ctx, dburl) 
+	pool, err := pgxpool.New(ctx, dburl) 
+	s.DB, err = pool.Acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
-	s.Nats, err = nats.Connection(natsurl)
+	s.Nats, err = nats.Connect(natsurl)
 	if err != nil {
 		return nil, err
 	}
@@ -56,12 +54,12 @@ func (s *PG) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage)
 		return err
 	}
 	// does uuid.UUID have Scanner/Valuer implemented?
-	_, err := s.DB.Exec(ctx, persistfmt, w.ID().String(),
+	_, err = s.DB.Exec(ctx, persistfmt, w.ID().String(),
 		w.Name(), cueball.StageStr[int(stage)], b)
 	return err
 }
 
-func (s *Pg) Enqueue(ctx context.Context, w cueball.Worker) error {
+func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
 	data, err := json.Marshal(w)
 	if err != nil {
 		return err
@@ -70,9 +68,8 @@ func (s *Pg) Enqueue(ctx context.Context, w cueball.Worker) error {
 	return s.Nats.Publish("pg."+w.Name(), data)
 }
 
-
 func (s *PG) Dequeue(ctx context.Context) error {
-	g, _ := s.Group().WithContext(ctx)
+	g, _ := errgroup.WithContext(ctx)
 	for name, w := range s.Workers() {
 		var err error
 		if _, ok := s.Sub[name]; !ok {
@@ -88,10 +85,11 @@ func (s *PG) Dequeue(ctx context.Context) error {
 				if err != nil {
 					return err
 				}
-				if err := json.Unmarshal(msg, ww); err != nil {
+				if err := json.Unmarshal(msg.Data, ww); err != nil {
 					return err
 				}
 				ww.FuncInit()
+				msg.AckSync()
 				s.Channel() <- ww
 			}
 		})
@@ -99,8 +97,8 @@ func (s *PG) Dequeue(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (s *Pg) LoadWork(ctx context.Context) error {
-	g, ctx := s.Group().WithContext(ctx) 
+func (s *PG) LoadWork(ctx context.Context) error {
+	g, ctx := errgroup.WithContext(ctx) 
 	for name, w := range s.Workers() {
 		g.Go(func () error {
 			tick := time.NewTicker(500 * time.Millisecond)
@@ -111,7 +109,7 @@ func (s *Pg) LoadWork(ctx context.Context) error {
 						s.Lock()
 						defer s.Unlock()
 						// TODO begin transaction.
-						rows, err := s.DB.QueryContext(ctx, loadworkfmt, name,
+						rows, err := s.DB.Query(ctx, loadworkfmt, name,
 							[]string{cueball.RETRY.String(),
 								cueball.NEXT.String()})
 						if err != nil {
@@ -129,6 +127,7 @@ func (s *Pg) LoadWork(ctx context.Context) error {
 						}
 						return nil
 					}()
+					return err
 				}
 			}
 		})
