@@ -30,7 +30,6 @@ func (s *StageWorker) Printer() {
 
 func (s *StageWorker) New() cueball.Worker {
 	sw := &StageWorker{Exec: &Exec{}}
-	sw.ID()
 	return sw
 }
 

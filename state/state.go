@@ -13,12 +13,13 @@ type Op struct {
 	group   *errgroup.Group
 	workers map[string]cueball.Worker
 	intake  chan cueball.Worker
-	init    func(*errgroup.Group, cueball.Worker)
 }
 
 func NewOp(g *errgroup.Group) (op *Op) {
+	op = new(Op)
 	op.intake = make(chan cueball.Worker, ChanSize)
 	op.group = g
+	op.workers = make(map[string]cueball.Worker)
 	return
 }
 

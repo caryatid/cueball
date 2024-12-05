@@ -1,5 +1,4 @@
 // state package for postgres persistence with NATS queue
-// TODO calling uuid new too often
 package state
 
 import (
@@ -102,6 +101,9 @@ func (s *PG) LoadWork(ctx context.Context, w cueball.Worker) error {
 			return err
 		}
 		if err := s.Enqueue(ctx, ww); err != nil {
+			return err
+		}
+		if err := s.Persist(ctx, ww, cueball.RUNNING); err != nil {
 			return err
 		}
 	}

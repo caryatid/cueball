@@ -1,7 +1,6 @@
 package worker
 
 import (
-	// "github.com/rs/zerolog/log"
 	"context"
 	"cueball"
 	"github.com/google/uuid"
