@@ -8,7 +8,7 @@ import (
 	"context"
 	"cueball"
 	"encoding/base64"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 	"io/fs"
 	"os"
@@ -36,6 +36,7 @@ type Fifo struct {
 
 func NewFifo(ctx context.Context, g *errgroup.Group, name, dir string) (*Fifo, error) {
 	var err error
+	log := zerolog.Ctx(ctx)
 	s := new(Fifo)
 	s.Op = NewOp(g)
 	if err = os.Mkdir(dir, 0700); err != nil {
@@ -83,6 +84,7 @@ func NewFifo(ctx context.Context, g *errgroup.Group, name, dir string) (*Fifo, e
 }
 
 func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage) error {
+	log := zerolog.Ctx(ctx)
 	d, err := marshal(w)
 	if err != nil {
 		return err
@@ -104,6 +106,7 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stag
 }
 
 func (s *Fifo) Dequeue(ctx context.Context) error {
+	log := zerolog.Ctx(ctx)
 	data, err := bufio.NewReader(s.out).ReadString('\n')
 	if err != nil {
 		log.Debug().Err(err).Msg("failed reading")
@@ -131,7 +134,6 @@ func (s *Fifo) Dequeue(ctx context.Context) error {
 func (s *Fifo) enqueue(p *Pack) error { // allows re-queuing a packed item
 	data, err := marshal(p)
 	if _, err = s.in.Write(append(data, '\n')); err != nil {
-		log.Debug().Err(err).Msg("failed writing")
 		return err
 	}
 	return s.in.Sync()
@@ -193,7 +195,6 @@ func (s *Fifo) LoadWork(ctx context.Context) error {
 func unmarshal(data string, w interface{}) error {
 	b, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
-		log.Debug().Err(err).Msg("failed decoding")
 		return err
 	}
 	return json.Unmarshal(b, w)
@@ -202,7 +203,6 @@ func unmarshal(data string, w interface{}) error {
 func marshal(w interface{}) ([]byte, error) {
 	b, err := json.Marshal(w)
 	if err != nil {
-		log.Debug().Err(err).Msg("failed marshalling")
 		return nil, err
 	}
 	data := make([]byte, base64.StdEncoding.EncodedLen(len(b)))

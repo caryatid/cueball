@@ -4,9 +4,11 @@ package cueball
 import (
 	"context"
 	"encoding/json"
+	"github.com/rs/zerolog"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 	"errors"
+	"os"
 )
 
 type Method func(context.Context) error
@@ -86,6 +88,8 @@ func (s *Stage) UnmarshalJSON(b []byte) error {
 }
 
 func Start(ctx context.Context, s State) error {
+	l := zerolog.New(os.Stdout) // TODO optional output
+	ctx = l.WithContext(ctx)
 	s.Group().Go(func () error {
 		return s.LoadWork(ctx)
 	})
