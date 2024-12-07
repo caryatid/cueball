@@ -4,8 +4,6 @@ import (
 	"context"
 	"cueball"
 	"fmt"
-	_ "github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"math/rand"
 )
 
@@ -24,23 +22,24 @@ func (s *StageWorker) FuncInit() error {
 	return nil
 }
 
-func (s *StageWorker) Printer() {
+func (s *StageWorker) Printer(ctx context.Context) {
+	log := cueball.Lc(ctx)
 	log.Debug().Interface("stage", s).Send()
 }
 
 func (s *StageWorker) New() cueball.Worker {
-	sw := &StageWorker{Exec: &Exec{}}
+	sw := &StageWorker{Exec: NewExec()}
 	return sw
 }
 
 func (s *StageWorker) Stage1(ctx context.Context) error {
 	s.Number = rand.Int() % 10
-	s.Printer()
+	s.Printer(ctx)
 	return nil
 }
 
 func (s *StageWorker) Stage2(ctx context.Context) error {
-	s.Printer()
+	s.Printer(ctx)
 	if s.Number < 4 {
 		s.Number = rand.Int() % 10
 		return fmt.Errorf("an error")
@@ -49,6 +48,6 @@ func (s *StageWorker) Stage2(ctx context.Context) error {
 }
 
 func (s *StageWorker) Stage3(ctx context.Context) error {
-	s.Printer()
+	s.Printer(ctx)
 	return nil
 }

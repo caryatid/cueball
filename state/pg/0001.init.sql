@@ -11,16 +11,16 @@ CREATE TYPE stage AS ENUM (
 CREATE TABLE execution_log (
 	id UUID NOT NULL DEFAULT gen_random_uuid(), 
 	stage stage,
-	time TIMESTAMP DEFAULT current_timestamp(),
+	time TIMESTAMP DEFAULT now(),
 	worker TEXT,
 	data JSONB
 );
 
-CREATE VIEW execution_state (
-	SELECT id, stage, time, worker
-	FROM (SELECT, id, stage, time, worker, row_number()
+CREATE VIEW execution_state AS (
+	SELECT id, stage, time, worker, data
+	FROM (SELECT id, stage, time, worker, data, row_number()
 	      OVER (PARTITION BY id ORDER BY time DESC) AS rn
 	FROM execution_log) AS t
 	WHERE rn = 1
-)
+);
 

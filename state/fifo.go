@@ -6,10 +6,10 @@ package state
 import (
 	"bufio"
 	"context"
+	"github.com/google/uuid"
 	"cueball"
 	"encoding/base64"
 	"encoding/json"
-	"golang.org/x/sync/errgroup"
 	"io/fs"
 	"os"
 	"strconv"
@@ -34,11 +34,11 @@ type Fifo struct {
 	dir *os.File
 }
 
-func NewFifo(ctx context.Context, g *errgroup.Group, name, dir string) (*Fifo, error) {
+func NewFifo(ctx context.Context, name, dir string) (*Fifo, error) {
 	var err error
 	log := cueball.Lc(ctx)
 	s := new(Fifo)
-	s.Op = NewOp(g)
+	s.Op = NewOp()
 	if err = mkdir(dir); err != nil {
 		return nil, err
 	}
@@ -90,15 +90,16 @@ func mkdir(path string) error {
 	return nil
 }
 
+func (s *Fifo) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
+	fm, _  := s.filemap()
+	f := fm[uuid.String()]
+	return s.read(f)
+}
+
 func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage) error {
 	log := cueball.Lc(ctx)
-	dir := s.dir.Name() + "/" + w.Name()
-	if err := mkdir(dir); err != nil {
-		log.Debug().Err(err).Msg("mkdir failed")
-		return err
-	}
-	fname := fmt.Sprintf("%s/%s:%d:%s", dir, w.ID().String(),
-		time.Now().UnixNano(), stage.String())
+	fname := fmt.Sprintf("%s/%s:%d:%s:%s", s.dir.Name(), w.ID().String(),
+		time.Now().UnixNano(), stage.String(), w.Name())
 	d, err := marshal(w) // AWKWARD Must happen after w.ID() call
 	if err != nil {
 		log.Debug().Err(err).Msg("marshal failed")
@@ -169,56 +170,68 @@ func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
 	return s.enqueue(&Pack{Name: w.Name(), Codec: string(data)})
 }
 
-func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker) error {
-	log := cueball.Lc(ctx)
-	dir := s.dir.Name() + "/" + w.Name()
-	if err := mkdir(dir); err != nil {
-		log.Debug().Err(err).Msg("failed to mkdir")
-		return err
-	}
-	files, _ := os.ReadDir(dir)
+func (s *Fifo)filemap() (map[string]string, error) {
 	var curid string
 	var pret int
 	var err error
-	x := make(map[string]string)
+	fm := make(map[string]string)
+	files, _ := s.dir.ReadDir(0) // TODO setup for batch
 	for _, f := range files {
 		ss := strings.Split(f.Name(), ":")
-		if len(ss) < 3 {
-			// TODO fixit
-			log.Debug().Err(err).Msg("failed to split")
-			return err
+		if len(ss) < 4 {
+			return nil, err
 		}
-		id, ts, _ := ss[0], ss[1], ss[2]
+		id, ts := ss[0], ss[1]
 		curt, _ := strconv.Atoi(ts)
 		if id != curid {
 			curid = id
-			x[id] = f.Name()
+			fm[id] = f.Name()
 			continue
 		} else if curt > pret {
-			x[id] = f.Name()
+			fm[id] = f.Name()
 		}
 	}
-	for _, f := range x {
+	return fm, nil
+}
+
+func (s *Fifo) read(f string) (cueball.Worker, error) {
+	df, err := os.Open(s.dir.Name() + "/" + f)
+	if err != nil {
+		return nil, err
+	}
+	ss := strings.Split(f, ":")
+	if len(ss) < 4 {
+		return nil, nil
+	}
+	wname := ss[3]
+	w, ok := s.Workers()[wname]
+	if !ok {
+		return nil, nil
+	}
+	ww := w.New()
+	data, err := bufio.NewReader(df).ReadString('\n')
+	err = unmarshal(data, ww)
+	if err != nil {
+		return nil, err
+	}
+	return ww, nil
+}
+
+func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker) error {
+	log := cueball.Lc(ctx)
+	m, err :=  s.filemap()
+	if err != nil {
+		return err
+	}
+	for _, f := range m {
 		ss := strings.Split(f, ":")
-		if len(ss) < 3 {
-			// TODO fixit
+		if len(ss) < 4 {
 			log.Debug().Err(err).Msg("failed to split")
-			return err
+			return err // TODO fixit
 		}
 		_, _, stage := ss[0], ss[1], ss[2]
 		if stage == "NEXT" || stage == "RETRY" {
-			df, err := os.Open(dir + "/" + f)
-			if err != nil {
-				log.Debug().Err(err).Msg("failed to open dir")
-				return err
-			}
-			data, err := bufio.NewReader(df).ReadString('\n')
-			ww := w.New()
-			err = unmarshal(data, ww)
-			if err != nil {
-				log.Debug().Err(err).Msg("failed to marshal")
-				return err
-			}
+			ww, err := s.read(f)
 			err = s.Enqueue(ctx, ww)
 			if err != nil {
 				log.Debug().Err(err).Msg("failed to enqueue")

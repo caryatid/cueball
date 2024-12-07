@@ -12,6 +12,13 @@ type Exec struct {
 	Current  int
 	Error    string
 	sequence []cueball.Method
+	// TODO version
+}
+
+func NewExec() *Exec {
+	e := new(Exec)
+	e.ID()
+	return e
 }
 
 func (e *Exec) ID() uuid.UUID {

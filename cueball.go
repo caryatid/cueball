@@ -7,41 +7,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
-	"os"
+//	"os"
 	"time"
 )
 
 // TODO options && config
 var worker_count = 4
-var Lc = zerolog.Ctx
+var Lc = zerolog.Ctx // import saver; kinda dumb
 
 type Method func(context.Context) error
-
-type Operation interface {
-	Group() *errgroup.Group
-	Load(Worker)
-	Workers() map[string]Worker
-	Channel() chan Worker
-	Start(context.Context, State) error
-}
-
-type State interface {
-	Operation
-	// persists worker at stage
-	Persist(context.Context, Worker, Stage) error
-	// enqueue's a single worker
-	Enqueue(context.Context, Worker) error
-	// gets work from queue. if in worker set puts onto channel
-	Dequeue(context.Context, Worker) error
-	// gets work from persistence and puts on queue
-	LoadWork(context.Context, Worker) error
-}
-
-type Execution interface {
-	Next(context.Context) error
-	Load(...Method)
-	ID() uuid.UUID
-}
 
 type Worker interface {
 	Execution
@@ -50,47 +24,75 @@ type Worker interface {
 	FuncInit() error
 }
 
-func Start(ctx context.Context, s State) error {
-	l := zerolog.New(os.Stdout) // TODO optional output
-	ctx = l.WithContext(ctx)
+type Execution interface {
+	Next(context.Context) error
+	Load(...Method)
+	ID() uuid.UUID
+}
+
+type State interface {
+	Operation
+	// persists worker at stage
+	Persist(context.Context, Worker, Stage) error
+	// gets a single worker 
+	Get(context.Context, uuid.UUID) (Worker, error)
+	// enqueue's a single worker
+	Enqueue(context.Context, Worker) error
+	// gets work from queue. if in worker set puts onto channel
+	Dequeue(context.Context, Worker) error
+	// gets work from persistence and puts on queue
+	LoadWork(context.Context, Worker) error
+}
+
+type Operation interface {
+	Load(Worker)
+	Workers() map[string]Worker
+	Channel() chan Worker
+}
+
+func Start(ctx context.Context, s State) *errgroup.Group {
+	// TODO log in context or create
+	// l := zerolog.New(os.Stdout) // TODO optional output
+	g, ctx := errgroup.WithContext(ctx)
 	log := Lc(ctx) // TODO use this or just l, above?
-	gl, ctxl := errgroup.WithContext(ctx)
-	gd, ctxd := errgroup.WithContext(ctx)
-	gr, ctxr := errgroup.WithContext(ctx)
 	for _, w := range s.Workers() {
 		log.Debug().Str("worker", w.Name()).Msg("load")
-		gl.Go(func() error {
+		g.Go(func() error {
 			tick := time.NewTicker(500 * time.Millisecond)
 			for {
 				select {
 				case <-tick.C:
-					if err := s.LoadWork(ctxl, w); err != nil {
+					if err := s.LoadWork(ctx, w); err != nil {
 						return err
 					}
 				}
 			}
 		})
-		gd.Go(func() error {
+		g.Go(func() error {
+			tick := time.NewTicker(500 * time.Millisecond)
 			for {
-				if err := s.Dequeue(ctxd, w); err != nil {
-					return err
+				select {
+				case <-tick.C: 
+					if err := s.Dequeue(ctx, w); err != nil {
+						return err
+					}
 				}
 			}
 		})
 	}
 	for i := 0; i <= worker_count; i++ {
-		gr.Go(func() error {
+		g.Go(func() error {
 			for {
 				select {
 				case w := <-s.Channel():
-					gr.Go(func() error {
-						return runstage(ctxr, w, s)
+					g.Go(func() error {
+						return runstage(ctx, w, s)
 					})
 				}
 			}
 		})
 	}
-	return s.Group().Wait()
+	return g
 }
 
 func runstage(ctx context.Context, w Worker, s State) error {
