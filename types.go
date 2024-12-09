@@ -15,17 +15,19 @@ func (e *EnumError) Error() string {
 	return "invalid enum value"
 }
 
+// TODO Scanner && Valuer interfaces?
 type Stage int
 
 const (
-	RUNNING Stage = iota
+	INIT Stage = iota
+	RUNNING
 	RETRY
 	NEXT
 	DONE
 )
 
-var StageStr = map[int]string{0: "RUNNING", 1: "RETRY", 2: "NEXT", 3: "DONE"}
-var StageInt = map[string]int{"RUNNING": 0, "RETRY": 1, "NEXT": 2, "DONE": 3}
+var StageStr = map[int]string{0: "INIT", 1: "RUNNING", 2: "RETRY", 3: "NEXT", 4: "DONE"}
+var StageInt = map[string]int{"INIT": 0, "RUNNING": 1, "RETRY": 2, "NEXT": 3, "DONE": 4}
 
 func (s *Stage) MarshalJSON() ([]byte, error) {
 	ss := StageStr[int(*s)]

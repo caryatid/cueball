@@ -27,13 +27,14 @@ type Worker interface {
 type Execution interface {
 	Next(context.Context) error
 	Load(...Method)
+	Stage() Stage
 	ID() uuid.UUID
 }
 
 type State interface {
 	Operation
 	// persists worker at stage
-	Persist(context.Context, Worker, Stage) error
+	Persist(context.Context, Worker) error
 	// gets a single worker 
 	Get(context.Context, uuid.UUID) (Worker, error)
 	// enqueue's a single worker
@@ -48,6 +49,7 @@ type Operation interface {
 	Load(Worker)
 	Workers() map[string]Worker
 	Channel() chan Worker
+	ReQueue(State, Worker) error
 }
 
 func Start(ctx context.Context, s State) *errgroup.Group {

@@ -96,10 +96,10 @@ func (s *Fifo) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) 
 	return s.read(f)
 }
 
-func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage) error {
+func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
 	log := cueball.Lc(ctx)
 	fname := fmt.Sprintf("%s/%s:%d:%s:%s", s.dir.Name(), w.ID().String(),
-		time.Now().UnixNano(), stage.String(), w.Name())
+		time.Now().UnixNano(), w.Stage().String(), w.Name())
 	d, err := marshal(w) // AWKWARD Must happen after w.ID() call
 	if err != nil {
 		log.Debug().Err(err).Msg("marshal failed")

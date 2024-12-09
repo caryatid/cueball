@@ -68,7 +68,7 @@ func (s *PG) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	return ww, nil
 }
 
-func (s *PG) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage) error {
+func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
 	log := cueball.Lc(ctx)
 	w.ID() // TODO this sux
 	b, err := json.Marshal(w)
@@ -78,7 +78,7 @@ func (s *PG) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage)
 	}
 	// does uuid.UUID have Scanner/Valuer implemented?
 	_, err = s.DB.Exec(ctx, persistfmt, w.ID().String(),
-		 stage.String(), w.Name(), b)
+		 w.Stage().String(), w.Name(), b)
 	if err != nil {
 		log.Debug().Err(err).Msg("exec error")
 	}

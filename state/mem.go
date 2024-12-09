@@ -39,19 +39,15 @@ func (s *Mem) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	return w, nil
 }
 
-func (s *PG) Persist(ctx context.Context, w cueball.Worker, stage cueball.Stage) error {
+func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
 	log := cueball.Lc(ctx)
 	s.ids[w.ID().String()] = w
 	return err
 }
 
 func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
-	data, err := json.Marshal(w)
-	if err != nil {
-		return err
-	}
-	s.Persist(ctx, w, cueball.RUNNING)
-	return s.Nats.Publish("pg."+w.Name(), data)
+	// functionally just a persist for mem based
+	return s.Persist(ctx, w)
 }
 
 func (s *PG) Dequeue(ctx context.Context, w cueball.Worker) error {

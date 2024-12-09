@@ -10,7 +10,8 @@ type Exec struct {
 	Id       uuid.UUID
 	Count    int
 	Current  int
-	Error    string
+	Error    string // TODO internal error w/ json interfaces for persistence
+	Stage    cueball.Stage
 	sequence []cueball.Method
 	// TODO version
 }
@@ -44,6 +45,11 @@ func (e *Exec) Next(ctx context.Context) error {
 		return new(cueball.EndError)
 	}
 	return nil
+}
+
+func (e *Exec) ReQueue(s cueball.State, w cueball.Worker) error {
+	if w.Stage == cueball.NEXT || w.Stage == cueball.RETRY {
+	}
 }
 
 func (e *Exec) Load(method ...cueball.Method) {
