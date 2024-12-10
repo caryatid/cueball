@@ -4,9 +4,6 @@ package state
 import (
 	"context"
 	"cueball"
-	"encoding/json"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/nats-io/nats.go"
 	"github.com/google/uuid"
 )
 
@@ -22,7 +19,7 @@ type Mem struct {
 func NewMem(ctx context.Context) (*Mem, error) {
 	s := new(Mem)
 	s.Op = NewOp()
-	s.queue = make(chan Worker, queue_size)
+	s.queue = make(chan cueball.Worker, queue_size)
 	s.ids = make(map[string]cueball.Worker)
 	return s, nil
 }
@@ -36,31 +33,28 @@ func (s *Mem) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 }
 
 func (s *Mem) Persist(ctx context.Context, w cueball.Worker) error {
-	// NOTE could factor out the persists b/c using pointers
-	// s.ids[w.ID().String()] = w
+	s.ids[w.ID().String()] = w
 	return nil
 }
 
 func (s *Mem) Enqueue(ctx context.Context, w cueball.Worker) error {
-	w.Stage = cueball.RUNNING
-	err := s.Persist(ctx, w)
 	s.queue <- w
-	return err
+	return nil
 }
 
 func (s *Mem) Dequeue(ctx context.Context, w cueball.Worker) error {
-	var err error
 	ww := <- s.queue
-	ww.FuncInit()
+	ww.FuncInit() // TODO not necessary for mem; do anyway as this is demonstrative
 	s.Channel() <- ww
 	return nil
 }
 
 func (s *Mem) LoadWork(ctx context.Context, w cueball.Worker) error {
-	log := cueball.Lc(ctx)
-	for name, w := range s.ids {
-		if w.Stage == cueball.RETRY || w.Stage == cueball.INIT ||
-			w.Stage == cueball.NEXT {
+	for _, w := range s.ids {
+		if w.Stage() == cueball.RETRY || w.Stage() == cueball.INIT ||
+			w.Stage() == cueball.NEXT {
+			w.SetStage(cueball.RUNNING)
+			s.Persist(ctx, w)
 			if err := s.Enqueue(ctx, w); err != nil {
 				return err
 			}
@@ -68,3 +62,4 @@ func (s *Mem) LoadWork(ctx context.Context, w cueball.Worker) error {
 	}
 	return nil
 }
+

@@ -12,12 +12,11 @@ type Exec struct {
 	Count    int
 	Current  int
 	Error    string // TODO internal error w/ json interfaces for persistence
-	StageI    cueball.Stage
 	sequence []cueball.Method
 	// TODO version
 }
 
-func NewExec() *Exec {
+func NewExec(en, de, cueball.WorkFunc) *Exec {
 	e := new(Exec)
 	e.ID()
 	return e
@@ -26,6 +25,7 @@ func NewExec() *Exec {
 func (e *Exec) Retry() bool {
 	return e.Count >= retrymax
 }
+
 func (e *Exec) ID() uuid.UUID {
 	if e.Id == uuid.Nil {
 		e.Id, _ = uuid.NewRandom() // TODO error handling
@@ -55,10 +55,3 @@ func (e *Exec) Load(method ...cueball.Method) {
 	e.sequence = append(e.sequence, method...)
 }
 
-func (e *Exec) Stage() cueball.Stage {
-	return e.StageI
-}
-
-func (e *Exec) SetStage(st cueball.Stage) {
-	e.StageI=st
-}

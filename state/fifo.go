@@ -1,6 +1,7 @@
 // state package for fifo
 // TODO calling uuid new too often
 // COULD DO path handling - if more complete use path/filepath
+//go:build linux
 package state
 
 import (
@@ -28,7 +29,6 @@ type Pack struct {
 
 type Fifo struct {
 	// TODO !!! apparently Windoze does not have fifo's wtf.
-	*Op
 	in  *os.File
 	out *os.File
 	dir *os.File
@@ -36,9 +36,7 @@ type Fifo struct {
 
 func NewFifo(ctx context.Context, name, dir string) (*Fifo, error) {
 	var err error
-	log := cueball.Lc(ctx)
 	s := new(Fifo)
-	s.Op = NewOp()
 	if err = mkdir(dir); err != nil {
 		return nil, err
 	}
@@ -47,9 +45,7 @@ func NewFifo(ctx context.Context, name, dir string) (*Fifo, error) {
 	}
 	fname := s.dir.Name() + "/" + name
 	if _, err := os.Stat(fname); err != nil {
-		log.Debug().Err(err).Msg("making fifo")
 		if err := syscall.Mkfifo(fname, 0644); err != nil {
-			log.Debug().Err(err).Msg("failed making fifo")
 			return nil, err
 		}
 	}
@@ -72,12 +68,10 @@ func NewFifo(ctx context.Context, name, dir string) (*Fifo, error) {
 	}()
 	s.out, err = os.OpenFile(fname, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
-		log.Debug().Err(err).Msg("failed opening fifo for reading")
 		return nil, err
 	}
 	err = <-check
 	if err != nil {
-		log.Debug().Err(err).Msg("failed opening fifo for writing")
 		return nil, err
 	}
 	return s, nil
@@ -90,61 +84,44 @@ func mkdir(path string) error {
 	return nil
 }
 
-func (s *Fifo) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
+// TODO handle stage
+func (s *Fifo) Get(ctx context.Context, w cueball.Worker, uuid uuid.UUID) error {
 	fm, _  := s.filemap()
 	f := fm[uuid.String()]
-	return s.read(f)
+	s.read(f, w)
 }
 
-func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
-	log := cueball.Lc(ctx)
+func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, st cueball.Stage) error {
 	fname := fmt.Sprintf("%s/%s:%d:%s:%s", s.dir.Name(), w.ID().String(),
-		time.Now().UnixNano(), w.Stage().String(), w.Name())
-	d, err := marshal(w) // AWKWARD Must happen after w.ID() call
+		time.Now().UnixNano(), st.String(), w.Name())
+	d, err := marshal(w)
 	if err != nil {
-		log.Debug().Err(err).Msg("marshal failed")
 		return err
 	}
 	f, err := os.OpenFile(fname, os.O_WRONLY|os.O_CREATE, 0600)
 	if err != nil {
-		log.Debug().Err(err).Str("filename", fname).Msg("open failed")
 		return err
 	}
 	if _, err = f.Write(append(d, '\n')); err != nil {
-		log.Debug().Err(err).Msg("failed writing")
 		return err
 	}
 	return f.Sync()
 }
 
 func (s *Fifo) Dequeue(ctx context.Context, w cueball.Worker) error {
-	log := cueball.Lc(ctx)
 	data, err := bufio.NewReader(s.out).ReadString('\n')
 	if err != nil {
-		log.Debug().Err(err).Msg("failed reading")
 		return err
 	}
 	p := new(Pack)
 	if err := unmarshal(data, p); err != nil {
-		log.Debug().Err(err).Msg("failed unmarshal")
 		return err
 	}
-	if w_, ok := s.Workers()[p.Name]; ok {
-		ww := w_.New()
-		if err := unmarshal(p.Codec, ww); err != nil {
-			log.Debug().Err(err).Msg("failed unmarshal")
-			return err
-		}
-		ww.FuncInit()
-		s.Channel() <- ww
-	} else { // re-enqueue if not a known worker type. stop infinite loops, TTL?
-		if err := s.enqueue(p); err != nil {
-			log.Debug().Err(err).Msg("failed marshal")
-			return err
-		}
-		log.Debug().Msg("re-enqueue")
+	if w.Name() == p.Name {
+		return unmarshal(p.Codec, w)
 	}
-	return nil
+	return s.enqueue(p) // re-enqueue if not a known worker type. stop infinite loops, TTL?
+	}
 }
 
 func (s *Fifo) enqueue(p *Pack) error { // allows re-queuing a packed item
@@ -161,10 +138,8 @@ func (s *Fifo) enqueue(p *Pack) error { // allows re-queuing a packed item
 func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
 	s.Lock()
 	defer s.Unlock()
-	log := cueball.Lc(ctx)
 	data, err := marshal(w)
 	if err != nil {
-		log.Debug().Err(err).Msg("failed to marshal")
 		return err
 	}
 	return s.enqueue(&Pack{Name: w.Name(), Codec: string(data)})
@@ -194,7 +169,7 @@ func (s *Fifo)filemap() (map[string]string, error) {
 	return fm, nil
 }
 
-func (s *Fifo) read(f string) (cueball.Worker, error) {
+func (s *Fifo) read(f string, w cueball.Worker) error {
 	df, err := os.Open(s.dir.Name() + "/" + f)
 	if err != nil {
 		return nil, err
@@ -203,22 +178,11 @@ func (s *Fifo) read(f string) (cueball.Worker, error) {
 	if len(ss) < 4 {
 		return nil, nil
 	}
-	wname := ss[3]
-	w, ok := s.Workers()[wname]
-	if !ok {
-		return nil, nil
-	}
-	ww := w.New()
 	data, err := bufio.NewReader(df).ReadString('\n')
-	err = unmarshal(data, ww)
-	if err != nil {
-		return nil, err
-	}
-	return ww, nil
+	return unmarshal(data, ww)
 }
 
 func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker) error {
-	log := cueball.Lc(ctx)
 	m, err :=  s.filemap()
 	if err != nil {
 		return err
@@ -226,7 +190,6 @@ func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker) error {
 	for _, f := range m {
 		ss := strings.Split(f, ":")
 		if len(ss) < 4 {
-			log.Debug().Err(err).Msg("failed to split")
 			return err // TODO fixit
 		}
 		_, _, stage := ss[0], ss[1], ss[2]
@@ -234,12 +197,10 @@ func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker) error {
 			ww, err := s.read(f)
 			err = s.Enqueue(ctx, ww)
 			if err != nil {
-				log.Debug().Err(err).Msg("failed to enqueue")
 				return err
 			}
 			err = per(ctx, ww, cueball.RUNNING)
 			if err != nil {
-				log.Debug().Err(err).Msg("failed to persist")
 				return err
 			}
 		}
