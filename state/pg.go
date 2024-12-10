@@ -90,7 +90,6 @@ func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
 	if err != nil {
 		return err
 	}
-	s.Persist(ctx, w, cueball.RUNNING)
 	return s.Nats.Publish("pg."+w.Name(), data)
 }
 

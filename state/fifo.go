@@ -237,7 +237,7 @@ func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker) error {
 				log.Debug().Err(err).Msg("failed to enqueue")
 				return err
 			}
-			err = s.Persist(ctx, ww, cueball.RUNNING)
+			err = per(ctx, ww, cueball.RUNNING)
 			if err != nil {
 				log.Debug().Err(err).Msg("failed to persist")
 				return err

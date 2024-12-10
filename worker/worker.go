@@ -6,12 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
+var retrymax = 3 // TODO something less lame
 type Exec struct {
 	Id       uuid.UUID
 	Count    int
 	Current  int
 	Error    string // TODO internal error w/ json interfaces for persistence
-	Stage    cueball.Stage
+	StageI    cueball.Stage
 	sequence []cueball.Method
 	// TODO version
 }
@@ -22,6 +23,9 @@ func NewExec() *Exec {
 	return e
 }
 
+func (e *Exec) Retry() bool {
+	return e.Count >= retrymax
+}
 func (e *Exec) ID() uuid.UUID {
 	if e.Id == uuid.Nil {
 		e.Id, _ = uuid.NewRandom() // TODO error handling
@@ -47,11 +51,14 @@ func (e *Exec) Next(ctx context.Context) error {
 	return nil
 }
 
-func (e *Exec) ReQueue(s cueball.State, w cueball.Worker) error {
-	if w.Stage == cueball.NEXT || w.Stage == cueball.RETRY {
-	}
-}
-
 func (e *Exec) Load(method ...cueball.Method) {
 	e.sequence = append(e.sequence, method...)
+}
+
+func (e *Exec) Stage() cueball.Stage {
+	return e.StageI
+}
+
+func (e *Exec) SetStage(st cueball.Stage) {
+	e.StageI=st
 }

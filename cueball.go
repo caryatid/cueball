@@ -1,6 +1,6 @@
 package cueball
 
-// NOTE: no internal imports in the file
+// NOTE: no internal imports in this package
 import (
 	"context"
 	"errors"
@@ -28,7 +28,9 @@ type Execution interface {
 	Next(context.Context) error
 	Load(...Method)
 	Stage() Stage
+	SetStage(Stage)
 	ID() uuid.UUID
+	Retry() bool
 }
 
 type State interface {
@@ -101,12 +103,29 @@ func runstage(ctx context.Context, w Worker, s State) error {
 	// TODO option allowing all stages on one thread?
 	err := w.Next(ctx)
 	if err != nil && errors.Is(err, &EndError{}) {
-		s.Persist(ctx, w, DONE)
-		return nil
+		return per(ctx, s, w, DONE)
 	} else if err != nil {
-		s.Persist(ctx, w, RETRY)
-		return err
+		if w.Retry() {
+			return porq(ctx, s, w)
+		} else {
+			return per(ctx, s, w, DONE)
+		}
+	} else {
+		return per(ctx, s, w, NEXT)
 	}
-	s.Persist(ctx, w, NEXT)
-	return nil
 }
+
+func porq(ctx context.Context, s State, w Worker) error {
+	if true { // TODO option
+		per(ctx, w, RETRY)
+	} else {
+		w.SetStage(RUNNING)
+		return s.Enqueue(ctx, w)
+	}
+}
+
+func per(ctx context.Context, s State, w Worker, stg Stage) error {
+	w.SetStage(stg)
+	return s.Persist(ctx, w)
+}
+

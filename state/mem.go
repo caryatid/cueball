@@ -12,22 +12,18 @@ import (
 
 var queue_size = 10 // TODO
 
-type wstage {
-	stage cueball.Stage
-	w cueball.Worker
-}
 
 type Mem struct {
 	*Op
 	queue chan cueball.Worker
-	ids map[string]wstage
+	ids map[string]cueball.Worker
 }
 
 func NewMem(ctx context.Context) (*Mem, error) {
 	s := new(Mem)
 	s.Op = NewOp()
 	s.queue = make(chan Worker, queue_size)
-	s.ids = make(map[string]wstage)
+	s.ids = make(map[string]cueball.Worker)
 	return s, nil
 }
 
@@ -39,59 +35,35 @@ func (s *Mem) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	return w, nil
 }
 
-func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
-	log := cueball.Lc(ctx)
-	s.ids[w.ID().String()] = w
+func (s *Mem) Persist(ctx context.Context, w cueball.Worker) error {
+	// NOTE could factor out the persists b/c using pointers
+	// s.ids[w.ID().String()] = w
+	return nil
+}
+
+func (s *Mem) Enqueue(ctx context.Context, w cueball.Worker) error {
+	w.Stage = cueball.RUNNING
+	err := s.Persist(ctx, w)
+	s.queue <- w
 	return err
 }
 
-func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
-	// functionally just a persist for mem based
-	return s.Persist(ctx, w)
-}
-
-func (s *PG) Dequeue(ctx context.Context, w cueball.Worker) error {
+func (s *Mem) Dequeue(ctx context.Context, w cueball.Worker) error {
 	var err error
-	name := w.Name()
-	if _, ok := s.Sub[name]; !ok {
-		s.Sub[name], err = s.Nats.QueueSubscribeSync("pg."+name, name)
-		if err != nil {
-			return err
-		}
-	}
-	ww := w.New()
-	msg, err := s.Sub[name].NextMsgWithContext(ctx)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(msg.Data, ww); err != nil {
-		return err
-	}
+	ww := <- s.queue
 	ww.FuncInit()
-	msg.AckSync()
 	s.Channel() <- ww
 	return nil
 }
 
-func (s *PG) LoadWork(ctx context.Context, w cueball.Worker) error {
+func (s *Mem) LoadWork(ctx context.Context, w cueball.Worker) error {
 	log := cueball.Lc(ctx)
-	rows, err := s.DB.Query(ctx, loadworkfmt, w.Name(),
-		[]string{cueball.RETRY.String(),
-			cueball.NEXT.String()})
-	if err != nil {
-		log.Debug().Err(err).Msg("query error")
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		ww := w.New()
-		if err := rows.Scan(ww); err != nil {
-			log.Debug().Err(err).Msg("scan error")
-			return err
-		}
-		if err := s.Enqueue(ctx, ww); err != nil {
-			log.Debug().Err(err).Msg("enqueue error")
-			return err
+	for name, w := range s.ids {
+		if w.Stage == cueball.RETRY || w.Stage == cueball.INIT ||
+			w.Stage == cueball.NEXT {
+			if err := s.Enqueue(ctx, w); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
