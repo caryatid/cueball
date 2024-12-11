@@ -1,42 +1,43 @@
-// state package for fifo
 //go:build linux
+
 package state
 
 import (
 	"bufio"
 	"context"
-	"github.com/google/uuid"
 	"cueball"
-	"encoding/base64"
-	"encoding/json"
+	"fmt"
+	"github.com/google/uuid"
 	"io/fs"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
-	"fmt"
 )
 
 var pre = ".cue"
 
 type Fifo struct {
-	// TODO !!! apparently Windoze does not have fifo's wtf.
+	cueball.WorkerSet
+	sync.Mutex
 	in  *os.File
 	out *os.File
-	dir *os.File
+	dir string
 }
 
-func NewFifo(ctx context.Context, name, dir string) (*Fifo, error) {
+func NewFifo(ctx context.Context, name, dir string, w ...cueball.Worker) (*Fifo, error) {
 	var err error
 	s := new(Fifo)
+	s.WorkerSet = DefaultWorkerSet()
+	s.AddWorker(ctx, w...)
 	if err = mkdir(dir); err != nil {
 		return nil, err
 	}
-	if s.dir, err = os.Open(dir); err != nil {
-		return nil, err
-	}
-	fname := s.dir.Name() + "/" + name
+	s.dir = dir
+	fname := s.dir + "/" + name
 	if _, err := os.Stat(fname); err != nil {
 		if err := syscall.Mkfifo(fname, 0644); err != nil {
 			return nil, err
@@ -67,26 +68,19 @@ func NewFifo(ctx context.Context, name, dir string) (*Fifo, error) {
 	if err != nil {
 		return nil, err
 	}
+	go s.dequeue(ctx)
 	return s, nil
 }
 
-func mkdir(path string) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return os.Mkdir(path, os.ModeDir|0755)
-	}
-	return nil
-}
-
-func (s *Fifo) Get(ctx context.Context, w cueball.Worker, uuid uuid.UUID) error {
-	fm, _  := s.filemap()
+func (s *Fifo) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
+	fm, _ := s.filemap()
 	f := fm[uuid.String()]
-	s.read(f, w)
-	return nil
+	return s.read(f)
 }
 
 func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
-	fname := fmt.Sprintf("%s/%s:%d:%s:%s", s.dir.Name(), w.ID().String(),
-		time.Now().UnixNano(), st.String(), w.Name())
+	fname := fmt.Sprintf("%s/%s:%d:%s:%s", s.dir, w.ID().String(),
+		time.Now().UnixNano(), w.Status().String(), w.Name())
 	d, err := marshal(w)
 	if err != nil {
 		return err
@@ -101,83 +95,32 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
 	return f.Sync()
 }
 
-func (s *Fifo) Dequeue(ctx context.Context, w cueball.Worker) error {
-	data, err := bufio.NewReader(s.out).ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-	p := new(Pack)
-	if err := unmarshal(data, p); err != nil {
-		return nil, err
-	}
-	if w.Name() == p.Name {
-		return unmarshal(p.Codec, w)
-	}
-	return s.enqueue(p) // re-enqueue if not the current worker type. stop infinite loops, TTL?
-}
-
-func (s *Fifo) enqueue(p *Pack) error { // allows re-queuing a packed item
-	data, err := marshal(p)
+func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
+	s.Lock()
+	defer s.Unlock()
+	data, err := marshal(w)
 	if err != nil {
 		return err
 	}
-	if _, err = s.in.Write(append(data, '\n')); err != nil {
+	p := &Pack{Name: w.Name(), Codec: string(data)}
+	wdata, err := marshal(p)
+	if err != nil {
+		return err
+	}
+	if _, err = s.in.Write(append(wdata, '\n')); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
-	data, err := marshal(w)
-	if err != nil {
-		return err
-	}
-	return s.enqueue(&Pack{Name: w.Name(), Codec: string(data)})
+func (s *Fifo) Close() error {
+	return nil
 }
 
-func (s *Fifo)filemap() (map[string]string, error) {
-	var curid string
-	var pret int
-	var err error
-	fm := make(map[string]string)
-	files, _ := s.dir.ReadDir(0) // TODO setup for batch
-	for _, f := range files {
-		ss := strings.Split(f.Name(), ":")
-		if len(ss) < 4 {
-			return nil, err
-		}
-		id, ts := ss[0], ss[1]
-		curt, _ := strconv.Atoi(ts)
-		if id != curid {
-			curid = id
-			fm[id] = f.Name()
-			continue
-		} else if curt > pret {
-			fm[id] = f.Name()
-		}
-	}
-	return fm, nil
-}
-
-func (s *Fifo) read(f string, w cueball.Worker) error {
-	df, err := os.Open(s.dir.Name() + "/" + f)
+func (s *Fifo) LoadWork(ctx context.Context, ch chan cueball.Worker) error {
+	m, err := s.filemap()
 	if err != nil {
-		return err
-	}
-	ss := strings.Split(f, ":")
-	if len(ss) < 4 {
-		return nil // TODO
-	}
-	data, err := bufio.NewReader(df).ReadString('\n')
-	if err != nil {
-		return err
-	}
-	return unmarshal(data, w)
-}
-
-func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker, ch chan cueball.Worker) error {
-	m, err :=  s.filemap()
-	if err != nil {
+		fmt.Errorf("ohh, %w", err)
 		return err
 	}
 	for _, f := range m {
@@ -185,15 +128,108 @@ func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker, ch chan cueball.W
 		if len(ss) < 4 {
 			return err // TODO fixit
 		}
-		_, _, stage := ss[0], ss[1], ss[2]
+		stage := ss[2]
 		if stage == "NEXT" || stage == "RETRY" || stage == "INIT" {
-			ww := w.New()
-			if err := s.read(f, ww); err != nil {
+			w, err := s.read(f)
+			if err != nil {
 				return err
 			}
-			ch <- ww
+			ch <- w
 		}
 	}
 	return nil
 }
 
+func (s *Fifo) filemap() (map[string]string, error) {
+	var curid string
+	var pret int
+	var files []string
+	fm := make(map[string]string)
+	dir, err := os.Open(s.dir)
+	defer dir.Close()
+	if err != nil {
+		return nil, err
+	}
+	des, _ := dir.ReadDir(0) // TODO setup for batch
+
+	for _, de := range des {
+		files = append(files, de.Name())
+	}
+	slices.Sort(files)
+	for _, f := range files {
+		ss := strings.Split(f, ":")
+		if len(ss) < 4 {
+			continue
+			// return nil, err
+		}
+		id, ts, wname := ss[0], ss[1], ss[3]
+		if w := s.ByName(wname); w == nil {
+			continue
+		}
+		curt, err := strconv.Atoi(ts)
+		if err != nil {
+			return nil, err
+		}
+		if id != curid {
+			fm[id] = f
+			curid = id
+			pret = curt
+			continue
+		} else if curt > pret {
+			fm[id] = f
+			pret = curt
+		}
+	}
+	return fm, nil
+}
+
+func (s *Fifo) read(f string) (cueball.Worker, error) {
+	df, err := os.Open(s.dir + "/" + f)
+	if err != nil {
+		return nil, err
+	}
+	ss := strings.Split(f, ":")
+	if len(ss) < 4 {
+		return nil, nil // TODO
+	}
+	name := ss[3]
+	w := s.ByName(name).New()
+	data, err := bufio.NewReader(df).ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	if err := unmarshal(data, w); err != nil {
+		return nil, err
+	}
+	return w, nil
+}
+
+func mkdir(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return os.Mkdir(path, os.ModeDir|0755)
+	}
+	return nil
+}
+
+func (s *Fifo) dequeue(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			data, err := bufio.NewReader(s.out).ReadString('\n')
+			if err != nil {
+				return err
+			}
+			p := new(Pack)
+			if err := unmarshal(data, p); err != nil {
+				return err
+			}
+			w := s.ByName(p.Name).New()
+			if err := unmarshal(p.Codec, w); err != nil {
+				return err
+			}
+			s.Out() <- w
+		}
+	}
+}

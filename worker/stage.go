@@ -8,7 +8,7 @@ import (
 )
 
 type StageWorker struct {
-	*Exec
+	cueball.Executor
 	Word   string
 	Number int
 }
@@ -17,17 +17,17 @@ func (s *StageWorker) Name() string {
 	return "stage-worker"
 }
 
-func (s *StageWorker) FuncInit() {
+func (s *StageWorker) StageInit() {
 	s.Load(s.Stage1, s.Stage2, s.Stage3)
 }
 
 func (s *StageWorker) Printer(ctx context.Context) {
 	log := cueball.Lc(ctx)
-	log.Debug().Int("rando", s.Number).Msg("from stage worker")
+	log.Debug().Interface("worker", s).Msg("from stage worker")
 }
 
 func (s *StageWorker) New() cueball.Worker {
-	sw := &StageWorker{Exec: NewExec()}
+	sw := &StageWorker{Executor: NewExecutor()}
 	return sw
 }
 

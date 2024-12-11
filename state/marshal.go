@@ -1,14 +1,15 @@
 package state
 
 import (
-	"encoding/json"
 	"encoding/base64"
+	"encoding/json"
 )
+
+// Pack facilitates multiplexing on an untyped queue
 type Pack struct {
 	Name  string
 	Codec string
 }
-
 
 func unmarshal(data string, w interface{}) error {
 	b, err := base64.StdEncoding.DecodeString(data)
@@ -27,4 +28,3 @@ func marshal(w interface{}) ([]byte, error) {
 	base64.StdEncoding.Encode(data, b)
 	return data, nil
 }
-

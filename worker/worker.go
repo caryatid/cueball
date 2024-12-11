@@ -4,37 +4,38 @@ import (
 	"context"
 	"cueball"
 	"github.com/google/uuid"
+	"sync"
 )
 
-var retrymax = 3 // TODO something less lame
-type Exec struct {
+type defaultExecutor struct {
+	sync.Mutex
 	Id       uuid.UUID
 	Count    int
 	Current  int
-	Error    string // TODO internal error w/ json interfaces for persistence
-	StageI	 cueball.Stage `json:"stage"`
+	Error    string         // TODO internal error w/ json interfaces for persistence
+	StatusI  cueball.Status `json:"stage"`
 	sequence []cueball.Method
 	// TODO version
 }
 
-func NewExec() *Exec {
-	e := new(Exec)
+func NewExecutor() cueball.Executor {
+	e := new(defaultExecutor)
 	e.ID()
 	return e
 }
 
-func (e *Exec) Retry() bool {
-	return e.Count <= retrymax
+func (e *defaultExecutor) Retry() bool {
+	return (e.Count - e.Current) <= cueball.RetryMax
 }
 
-func (e *Exec) ID() uuid.UUID {
+func (e *defaultExecutor) ID() uuid.UUID {
 	if e.Id == uuid.Nil {
 		e.Id, _ = uuid.NewRandom() // TODO error handling
 	}
 	return e.Id
 }
 
-func (e *Exec) Next(ctx context.Context) error {
+func (e *defaultExecutor) Next(ctx context.Context) error {
 	e.Count++
 	if e.Current >= len(e.sequence) {
 		return cueball.EndError
@@ -52,16 +53,15 @@ func (e *Exec) Next(ctx context.Context) error {
 	return nil
 }
 
-func (e *Exec) Load(method ...cueball.Method) {
-//	e.sequence = append(e.sequence, method...)
+func (e *defaultExecutor) Load(method ...cueball.Method) {
+	// TODO this overwrites the sequence. Simpler than managing append, indexing, etc
 	e.sequence = method
 }
 
-func (e *Exec) Stage() cueball.Stage {
-	return e.StageI
+func (e *defaultExecutor) Status() cueball.Status {
+	return e.StatusI
 }
 
-func (e *Exec) SetStage(s cueball.Stage) { 
-	e.StageI = s
+func (e *defaultExecutor) SetStatus(s cueball.Status) {
+	e.StatusI = s
 }
-

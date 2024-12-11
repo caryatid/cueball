@@ -1,21 +1,22 @@
 package cueball
 
 import (
-	"encoding/json"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 )
 
+// Internal Error definitions
+var (
+	EndError  = errors.New("iteration complete")
+	EnumError = errors.New("invalid enum value")
+)
 
-
-var EndError = errors.New("iteration complete") 
-var EnumError = errors.New("invalid enum value")
-var RequeueError = errors.New("re enqueued task")
-
-type Stage int
+// Status enum definition
+type Status int
 
 const (
-	INIT Stage = iota
+	INIT Status = iota
 	ENQUEUE
 	RUNNING
 	RETRY
@@ -24,56 +25,58 @@ const (
 	FAIL
 )
 
-var stage2string = map[Stage]string{
-	INIT: "INIT",
+var status2string = map[Status]string{
+	INIT:    "INIT",
 	ENQUEUE: "ENQUEUE",
 	RUNNING: "RUNNING",
-	RETRY: "RETRY",
-	NEXT: "NEXT",
-	DONE: "DONE",
-	FAIL: "FAIL"}
-var string2stage = map[string]Stage{
-	"INIT": INIT,
+	RETRY:   "RETRY",
+	NEXT:    "NEXT",
+	DONE:    "DONE",
+	FAIL:    "FAIL"}
+
+var string2status = map[string]Status{
+	"INIT":    INIT,
 	"ENQUEUE": ENQUEUE,
 	"RUNNING": RUNNING,
-	"RETRY": RETRY,
-	"NEXT": NEXT,
-	"DONE": DONE,
-	"FAIL": FAIL}
-func (s *Stage) MarshalJSON() ([]byte, error) {
-	ss := stage2string[*s]
+	"RETRY":   RETRY,
+	"NEXT":    NEXT,
+	"DONE":    DONE,
+	"FAIL":    FAIL}
+
+func (s *Status) MarshalJSON() ([]byte, error) {
+	ss := status2string[*s]
 	return json.Marshal(ss)
 }
 
-func (s Stage) String() string {
-	return stage2string[s]
+func (s Status) String() string {
+	return status2string[s]
 }
 
-func (s *Stage) UnmarshalJSON(b []byte) error {
+func (s *Status) UnmarshalJSON(b []byte) error {
 	var ss string
 	var ok bool
 	if err := json.Unmarshal(b, &ss); err != nil {
 		return err
 	}
-	*s, ok = string2stage[ss]
+	*s, ok = string2status[ss]
 	if !ok {
 		return EnumError
 	}
 	return nil
 }
 
-func (s Stage) Value() (driver.Value, error) {
-	return stage2string[s], nil
+func (s Status) Value() (driver.Value, error) {
+	return status2string[s], nil
 }
 
-func (s *Stage) Scan(value interface{}) error {
+func (s *Status) Scan(value interface{}) error {
 	if value == nil {
 		*s = INIT
 		return nil
 	}
 	switch v := value.(type) {
-	case string:	
-		*s = string2stage[v]
+	case string:
+		*s = string2status[v]
 	}
 	return nil
 }

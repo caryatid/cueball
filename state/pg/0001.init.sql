@@ -1,10 +1,13 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TYPE stage AS ENUM (
+	'INIT',
+	'ENQUEUE',
 	'RUNNING',
 	'RETRY',
 	'NEXT',
-	'DONE'
+	'DONE',
+	'FAIL'
 );
 
 -- append only table
