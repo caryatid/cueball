@@ -26,14 +26,16 @@ AND stage = ANY($2) FOR UPDATE SKIP LOCKED
 `
 
 type PG struct {
+	*Operator
 	DB   *pgxpool.Pool
 	Nats *nats.Conn
 	Sub  map[string]*nats.Subscription
 }
 
-func NewPG(ctx context.Context, dburl string, natsurl string) (*PG, error) {
+func NewPG(ctx context.Context, dburl string, natsurl string, w ...cueball.Worker) (*PG, error) {
 	var err error
 	s := new(PG)
+	s.Operator = NewOperator(w...)
 	s.Sub = make(map[string]*nats.Subscription)
 	s.DB, err = pgxpool.New(ctx, dburl)
 	if err != nil {
@@ -60,7 +62,8 @@ func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
 	return err
 }
 
-func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
+func (s *PG) Enqueue(ctx context.Context) error {
+	w := <- s.Intake()
 	data, err := json.Marshal(w)
 	if err != nil {
 		return err
@@ -68,23 +71,24 @@ func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
 	return s.Nats.Publish("pg."+w.Name(), data)
 }
 
-func (s *PG) Dequeue(ctx context.Context, w cueball.Worker) error {
+func (s *PG) Dequeue(ctx context.Context) error {
 	var err error
-	name := w.Name()
-	if _, ok := s.Sub[name]; !ok {
-		s.Sub[name], err = s.Nats.QueueSubscribeSync("pg."+name, name)
-		if err != nil {
-			return err
+	for name, w := range o.Workers() {
+		if _, ok := s.Sub[name]; !ok {
+			s.Sub[name], err = s.Nats.QueueSubscribe("pg."+name, name, func (msg *nats.Msg) {
+				// TODO handle errors
+				ww := w.New()
+				if err := json.Unmarshal(msg.Data, ww); err != nil {
+					return 
+				}
+				s.Work() <- ww
+				return msg.AckSync()
+			})
+			if err != nil {
+				return err
+			}
 		}
 	}
-	msg, err := s.Sub[name].NextMsgWithContext(ctx)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(msg.Data, w); err != nil {
-		return err
-	}
-	return msg.AckSync()
 }
 
 func (s *PG) LoadWork(ctx context.Context, w cueball.Worker, ch chan cueball.Worker) error {

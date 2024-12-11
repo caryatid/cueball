@@ -16,12 +16,13 @@ type Operator struct {
 	state cueball.State
 	workers map[string]cueball.Worker
 	intake  chan cueball.Worker
+	work  chan cueball.Worker
 }
 
-func NewOperator(s cueball.State, w ...cueball.Worker) *Operator {
+func NewOperator(w ...cueball.Worker) *Operator {
 	op := new(Operator)
-	op.state = s
 	op.intake = make(chan cueball.Worker, ChanSize)
+	op.work = make(chan cueball.Worker, ChanSize)
 	op.workers = make(map[string]cueball.Worker)
 	op.Add(w...)
 	return op
@@ -31,6 +32,14 @@ func (o *Operator) Add(w ...cueball.Worker) {
 	for _, ww := range w {
 		o.workers[ww.Name()] = ww
 	}
+}
+
+func (o *Operator) Intake() chan cueball.Worker {
+	return o.intake
+}
+
+func (o *Operator) Work() chan cueball.Worker {
+	return o.work
 }
 
 func (o *Operator) Workers() map[string]cueball.Worker {

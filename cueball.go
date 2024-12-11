@@ -5,6 +5,7 @@ import (
 	"context"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 )
 
 // TODO options && config
@@ -31,10 +32,19 @@ type Execution interface {
 }
 
 type State interface {
+	Operator
 	Get(context.Context, Worker, uuid.UUID) error
 	Persist(context.Context, Worker) error
 	Enqueue(context.Context, Worker) error
 	Dequeue(context.Context, Worker) error
 	LoadWork(context.Context, Worker, chan Worker) error
+}
+
+type Operator interface {
+	Add(...Worker)
+	Intake() chan Worker
+	Work() chan Worker
+	Workers() map[string]Worker
+	Start(context.Context) *errgroup.Group
 }
 
