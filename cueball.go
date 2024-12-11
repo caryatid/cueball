@@ -8,7 +8,7 @@ import (
 )
 
 // TODO options && config
-var worker_count = 4
+var Worker_count = 4
 var Lc = zerolog.Ctx // import saver; kinda dumb
 
 type Method func(context.Context) error
@@ -32,9 +32,9 @@ type Execution interface {
 
 type State interface {
 	Get(context.Context, Worker, uuid.UUID) error
-	Persist(context.Context, Worker, Stage) error
+	Persist(context.Context, Worker) error
 	Enqueue(context.Context, Worker) error
 	Dequeue(context.Context, Worker) error
-	LoadWork(context.Context, Worker) error
+	LoadWork(context.Context, Worker, chan Worker) error
 }
 

@@ -1,6 +1,4 @@
 // state package for fifo
-// TODO calling uuid new too often
-// COULD DO path handling - if more complete use path/filepath
 //go:build linux
 package state
 
@@ -21,11 +19,6 @@ import (
 )
 
 var pre = ".cue"
-
-type Pack struct {
-	Name  string
-	Codec string
-}
 
 type Fifo struct {
 	// TODO !!! apparently Windoze does not have fifo's wtf.
@@ -84,7 +77,6 @@ func mkdir(path string) error {
 	return nil
 }
 
-// TODO handle stage
 func (s *Fifo) Get(ctx context.Context, w cueball.Worker, uuid uuid.UUID) error {
 	fm, _  := s.filemap()
 	f := fm[uuid.String()]
@@ -92,7 +84,7 @@ func (s *Fifo) Get(ctx context.Context, w cueball.Worker, uuid uuid.UUID) error 
 	return nil
 }
 
-func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, st cueball.Stage) error {
+func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
 	fname := fmt.Sprintf("%s/%s:%d:%s:%s", s.dir.Name(), w.ID().String(),
 		time.Now().UnixNano(), st.String(), w.Name())
 	d, err := marshal(w)
@@ -112,16 +104,16 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, st cueball.Stage) 
 func (s *Fifo) Dequeue(ctx context.Context, w cueball.Worker) error {
 	data, err := bufio.NewReader(s.out).ReadString('\n')
 	if err != nil {
-		return err
+		return nil, err
 	}
 	p := new(Pack)
 	if err := unmarshal(data, p); err != nil {
-		return err
+		return nil, err
 	}
 	if w.Name() == p.Name {
 		return unmarshal(p.Codec, w)
 	}
-	return s.enqueue(p) // re-enqueue if not a known worker type. stop infinite loops, TTL?
+	return s.enqueue(p) // re-enqueue if not the current worker type. stop infinite loops, TTL?
 }
 
 func (s *Fifo) enqueue(p *Pack) error { // allows re-queuing a packed item
@@ -203,23 +195,5 @@ func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker, ch chan cueball.W
 		}
 	}
 	return nil
-}
-
-func unmarshal(data string, w interface{}) error {
-	b, err := base64.StdEncoding.DecodeString(data)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(b, w)
-}
-
-func marshal(w interface{}) ([]byte, error) {
-	b, err := json.Marshal(w)
-	if err != nil {
-		return nil, err
-	}
-	data := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
-	base64.StdEncoding.Encode(data, b)
-	return data, nil
 }
 

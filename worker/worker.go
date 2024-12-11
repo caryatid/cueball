@@ -24,7 +24,7 @@ func NewExec() *Exec {
 }
 
 func (e *Exec) Retry() bool {
-	return e.Count >= retrymax
+	return e.Count <= retrymax
 }
 
 func (e *Exec) ID() uuid.UUID {
@@ -37,7 +37,7 @@ func (e *Exec) ID() uuid.UUID {
 func (e *Exec) Next(ctx context.Context) error {
 	e.Count++
 	if e.Current >= len(e.sequence) {
-		return new(cueball.EndError)
+		return cueball.EndError
 	}
 	err := e.sequence[e.Current](ctx)
 	if err != nil {
@@ -47,13 +47,14 @@ func (e *Exec) Next(ctx context.Context) error {
 	e.Error = "" // clear any previous error
 	e.Current++
 	if e.Current >= len(e.sequence) {
-		return new(cueball.EndError)
+		return cueball.EndError
 	}
 	return nil
 }
 
 func (e *Exec) Load(method ...cueball.Method) {
-	e.sequence = append(e.sequence, method...)
+//	e.sequence = append(e.sequence, method...)
+	e.sequence = method
 }
 
 func (e *Exec) Stage() cueball.Stage {

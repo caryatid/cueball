@@ -3,23 +3,20 @@ package cueball
 import (
 	"encoding/json"
 	"database/sql/driver"
+	"errors"
 )
 
-type EndError struct{}
-type EnumError struct{}
 
-func (e *EndError) Error() string {
-	return "iteration complete"
-}
 
-func (e *EnumError) Error() string {
-	return "invalid enum value"
-}
+var EndError = errors.New("iteration complete") 
+var EnumError = errors.New("invalid enum value")
+var RequeueError = errors.New("re enqueued task")
 
 type Stage int
 
 const (
 	INIT Stage = iota
+	ENQUEUE
 	RUNNING
 	RETRY
 	NEXT
@@ -29,6 +26,7 @@ const (
 
 var stage2string = map[Stage]string{
 	INIT: "INIT",
+	ENQUEUE: "ENQUEUE",
 	RUNNING: "RUNNING",
 	RETRY: "RETRY",
 	NEXT: "NEXT",
@@ -36,6 +34,7 @@ var stage2string = map[Stage]string{
 	FAIL: "FAIL"}
 var string2stage = map[string]Stage{
 	"INIT": INIT,
+	"ENQUEUE": ENQUEUE,
 	"RUNNING": RUNNING,
 	"RETRY": RETRY,
 	"NEXT": NEXT,
@@ -58,7 +57,7 @@ func (s *Stage) UnmarshalJSON(b []byte) error {
 	}
 	*s, ok = string2stage[ss]
 	if !ok {
-		return &EnumError{}
+		return EnumError
 	}
 	return nil
 }

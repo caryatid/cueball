@@ -5,6 +5,8 @@ import (
 	"cueball"
 	"sync"
 	"golang.org/x/sync/errgroup"
+	"errors"
+	"time"
 )
 
 var ChanSize = 1 // Configuration? Argument to NewOperator?
@@ -21,7 +23,7 @@ func NewOperator(s cueball.State, w ...cueball.Worker) *Operator {
 	op.state = s
 	op.intake = make(chan cueball.Worker, ChanSize)
 	op.workers = make(map[string]cueball.Worker)
-	op.Add(w)
+	op.Add(w...)
 	return op
 }
 
@@ -36,12 +38,8 @@ func (o *Operator) Workers() map[string]cueball.Worker {
 }
 
 func (o *Operator) Start(ctx context.Context) *errgroup.Group {
-	// TODO log in context or create
-	// l := zerolog.New(os.Stdout) // TODO optional output
 	g, ctx := errgroup.WithContext(ctx)
-	log := Lc(ctx) // TODO use this or just l, above?
 	for _, w := range o.Workers() {
-		log.Debug().Str("worker", w.Name()).Msg("load")
 		g.Go(func() error {
 			return driver(ctx, w, o.loadWork)
 		})
@@ -49,7 +47,7 @@ func (o *Operator) Start(ctx context.Context) *errgroup.Group {
 			return driver(ctx, w, o.dequeue)
 		})
 	}
-	for i := 0; i <= worker_count; i++ {
+	for i := 0; i <= cueball.Worker_count; i++ {
 		g.Go(func() error {
 			for {
 				select {
@@ -68,13 +66,16 @@ func (o *Operator) Start(ctx context.Context) *errgroup.Group {
 
 func (o *Operator) dequeue(ctx context.Context, w cueball.Worker) error {
 	ww := w.New()
-	if err := o.state.Dequeue(ctx, ww); err != nil {
+	err := o.state.Dequeue(ctx, ww)
+	if err != nil && errors.Is(err, cueball.RequeueError) {
+		return nil
+	} else if err != nil {
 		return err
 	}
 	ww.FuncInit()
-	ww.SetStage(cueball.Running)
+	ww.SetStage(cueball.RUNNING)
 	o.intake <- ww
-	return o.state.Persist(ctx, w)
+	return o.state.Persist(ctx, ww)
 }
 
 func (o *Operator) enqueue(ctx context.Context, w cueball.Worker) error {
@@ -116,26 +117,33 @@ func (o *Operator) loadWork(ctx context.Context, w cueball.Worker) error {
 
 func (o *Operator)runstage(ctx context.Context, w cueball.Worker) error {
 	// TODO option allowing all stages on one thread?
+	log := cueball.Lc(ctx).With().Str("name", w.Name()).Logger()
 	err := w.Next(ctx)
-	if err != nil && errors.Is(err, &EndError{}) {
-		return o.state.Persist(ctx, w, cueball.DONE) // TODO FAIL state?
+	if err != nil && errors.Is(err, cueball.EndError) {
+		w.SetStage(cueball.DONE) 
+		log.Debug().Interface("worker", w).Msg("Process Complete")
+		return o.state.Persist(ctx, w) 
 	} else if err != nil {
 		if w.Retry() {
 			if true { // TODO option to bypass persistence
 				w.SetStage(cueball.RETRY)
+				log.Debug().Err(err).Interface("worker", w).Msg("retry persist")
 				return o.state.Persist(ctx, w)
 			} 
+			log.Debug().Err(err).Interface("worker", w).Msg("retry re-enqueue")
 			return o.enqueue(ctx, w)
 		} 
 		w.SetStage(cueball.FAIL)
+		log.Debug().Err(err).Interface("worker", w).Msg("fail")
 		return o.state.Persist(ctx, w)
 	} 
 	w.SetStage(cueball.NEXT)
-	return per(ctx, w)
+	log.Debug().Interface("worker", w).Msg("next stage")
+	return o.state.Persist(ctx, w) 
 }
 
 func driver(ctx context.Context, w cueball.Worker, f cueball.WorkFunc) error {
-	tick := time.NewTicker(500 * time.Millisecond)
+	tick := time.NewTicker(50 * time.Millisecond)
 	for {
 		select {
 		case <- ctx.Done():

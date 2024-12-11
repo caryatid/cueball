@@ -11,7 +11,7 @@ import (
 )
 
 // TODO used prepared statements
-var getfmt = `SELECT worker, data FROM execution_state
+var getfmt = `SELECT data FROM execution_state
 WHERE id = $1
 `
 var persistfmt = `
@@ -46,9 +46,8 @@ func NewPG(ctx context.Context, dburl string, natsurl string) (*PG, error) {
 	return s, nil
 }
 
-func (s *PG) Get(ctx context.Context, o *Operator, uuid uuid.UUID) error {
-	var wname cueball.Stage
-	return s.DB.QueryRow(ctx, getfmt, uuid).Scan(&wname, w) 
+func (s *PG) Get(ctx context.Context, w cueball.Worker, uuid uuid.UUID) error {
+	return s.DB.QueryRow(ctx, getfmt, uuid).Scan(ww) 
 }
 
 func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
@@ -57,7 +56,7 @@ func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
 		return err
 	}
 	_, err = s.DB.Exec(ctx, persistfmt, w.ID().String(),
-		 w.Stage().String(), w.Name(), b)
+		 w.Stage(), w.Name(), b)
 	return err
 }
 
@@ -85,13 +84,12 @@ func (s *PG) Dequeue(ctx context.Context, w cueball.Worker) error {
 	if err := json.Unmarshal(msg.Data, w); err != nil {
 		return err
 	}
-	msg.AckSync()
-	return nil
+	return msg.AckSync()
 }
 
 func (s *PG) LoadWork(ctx context.Context, w cueball.Worker, ch chan cueball.Worker) error {
 	rows, err := s.DB.Query(ctx, loadworkfmt, w.Name(),
-		[]string{cueball.RETRY, cueball.NEXT, cueball.INIT})
+		[]cueball.Stage{cueball.RETRY, cueball.NEXT, cueball.INIT})
 	if err != nil {
 		return err
 	}

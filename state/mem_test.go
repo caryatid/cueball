@@ -20,7 +20,8 @@ func setup(t *testing.T) (context.Context, *zerolog.Logger, *assert.Assertions) 
 
 func TestMemState(t *testing.T) {
 	ctx, log, assert := setup(t)
-	log = log.With().Str("state", "mem").Logger()
+	assert.NoError(nil)
+	l := log.With().Str("state", "mem").Logger()
 	ctx = l.WithContext(ctx)
 	sm, err := NewMem(ctx)
 	if err != nil {
@@ -31,14 +32,23 @@ func TestMemState(t *testing.T) {
 		new(worker.CountWorker).New(),
 	}
 	o := NewOperator(sm, works...)
+	var checks []cueball.Worker
 	for _, w := range works {
-		for i:=0;i<10;i++ {
-			sm.Persist(ctx, w.New(), cueball.INIT)
+		for i:=0;i<3;i++ {
+			ww := w.New()
+			checks = append(checks, ww)
+			sm.Persist(ctx, ww)
 		}
 	}
 	o.Start(ctx)
-	select {
-	case <-ctx.Done():
-		log.Debug().Msg("CONTEXT CANCELLED")
+	for {
+		select {
+		case <-ctx.Done():
+			log.Debug().Msg("CONTEXT CANCELLED")
+		default:
+			for _, w := range checks {
+				ww, _ := sm.Get(ctx, ww, w.ID())
+			}
+		}
 	}
 }

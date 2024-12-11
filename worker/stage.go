@@ -23,7 +23,7 @@ func (s *StageWorker) FuncInit() {
 
 func (s *StageWorker) Printer(ctx context.Context) {
 	log := cueball.Lc(ctx)
-	log.Debug().Interface("stage", s).Send()
+	log.Debug().Int("rando", s.Number).Msg("from stage worker")
 }
 
 func (s *StageWorker) New() cueball.Worker {
