@@ -11,7 +11,7 @@ import (
 )
 
 // TODO used prepared statements
-var getfmt = `SELECT stage, worker, data FROM execution_state
+var getfmt = `SELECT worker, data FROM execution_state
 WHERE id = $1
 `
 var persistfmt = `
@@ -46,11 +46,12 @@ func NewPG(ctx context.Context, dburl string, natsurl string) (*PG, error) {
 	return s, nil
 }
 
-func (s *PG) Get(ctx context.Context, w Worker, uuid uuid.UUID) error {
-	return s.DB.QueryRow(ctx, getfmt, uuid).Scan(w) {
+func (s *PG) Get(ctx context.Context, o *Operator, uuid uuid.UUID) error {
+	var wname cueball.Stage
+	return s.DB.QueryRow(ctx, getfmt, uuid).Scan(&wname, w) 
 }
 
-func (s *PG) Persist(ctx context.Context, w cueball.Worker, st cueball.Stage) error {
+func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
 	b, err := json.Marshal(w)
 	if err != nil {
 		return err
@@ -90,8 +91,7 @@ func (s *PG) Dequeue(ctx context.Context, w cueball.Worker) error {
 
 func (s *PG) LoadWork(ctx context.Context, w cueball.Worker, ch chan cueball.Worker) error {
 	rows, err := s.DB.Query(ctx, loadworkfmt, w.Name(),
-		[]string{cueball.RETRY.String(),
-			cueball.NEXT.String()})
+		[]string{cueball.RETRY, cueball.NEXT, cueball.INIT})
 	if err != nil {
 		return err
 	}

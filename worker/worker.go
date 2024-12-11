@@ -12,11 +12,12 @@ type Exec struct {
 	Count    int
 	Current  int
 	Error    string // TODO internal error w/ json interfaces for persistence
+	StageI	 cueball.Stage `json:"stage"`
 	sequence []cueball.Method
 	// TODO version
 }
 
-func NewExec(en, de, cueball.WorkFunc) *Exec {
+func NewExec() *Exec {
 	e := new(Exec)
 	e.ID()
 	return e
@@ -53,5 +54,13 @@ func (e *Exec) Next(ctx context.Context) error {
 
 func (e *Exec) Load(method ...cueball.Method) {
 	e.sequence = append(e.sequence, method...)
+}
+
+func (e *Exec) Stage() cueball.Stage {
+	return e.StageI
+}
+
+func (e *Exec) SetStage(s cueball.Stage) { 
+	e.StageI = s
 }
 

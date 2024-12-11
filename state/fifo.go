@@ -89,6 +89,7 @@ func (s *Fifo) Get(ctx context.Context, w cueball.Worker, uuid uuid.UUID) error 
 	fm, _  := s.filemap()
 	f := fm[uuid.String()]
 	s.read(f, w)
+	return nil
 }
 
 func (s *Fifo) Persist(ctx context.Context, w cueball.Worker, st cueball.Stage) error {
@@ -121,7 +122,6 @@ func (s *Fifo) Dequeue(ctx context.Context, w cueball.Worker) error {
 		return unmarshal(p.Codec, w)
 	}
 	return s.enqueue(p) // re-enqueue if not a known worker type. stop infinite loops, TTL?
-	}
 }
 
 func (s *Fifo) enqueue(p *Pack) error { // allows re-queuing a packed item
@@ -136,8 +136,6 @@ func (s *Fifo) enqueue(p *Pack) error { // allows re-queuing a packed item
 }
 
 func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
-	s.Lock()
-	defer s.Unlock()
 	data, err := marshal(w)
 	if err != nil {
 		return err
@@ -172,17 +170,20 @@ func (s *Fifo)filemap() (map[string]string, error) {
 func (s *Fifo) read(f string, w cueball.Worker) error {
 	df, err := os.Open(s.dir.Name() + "/" + f)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	ss := strings.Split(f, ":")
 	if len(ss) < 4 {
-		return nil, nil
+		return nil // TODO
 	}
 	data, err := bufio.NewReader(df).ReadString('\n')
-	return unmarshal(data, ww)
+	if err != nil {
+		return err
+	}
+	return unmarshal(data, w)
 }
 
-func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker) error {
+func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker, ch chan cueball.Worker) error {
 	m, err :=  s.filemap()
 	if err != nil {
 		return err
@@ -193,16 +194,12 @@ func (s *Fifo) LoadWork(ctx context.Context, w cueball.Worker) error {
 			return err // TODO fixit
 		}
 		_, _, stage := ss[0], ss[1], ss[2]
-		if stage == "NEXT" || stage == "RETRY" {
-			ww, err := s.read(f)
-			err = s.Enqueue(ctx, ww)
-			if err != nil {
+		if stage == "NEXT" || stage == "RETRY" || stage == "INIT" {
+			ww := w.New()
+			if err := s.read(f, ww); err != nil {
 				return err
 			}
-			err = per(ctx, ww, cueball.RUNNING)
-			if err != nil {
-				return err
-			}
+			ch <- ww
 		}
 	}
 	return nil

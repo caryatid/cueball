@@ -3,12 +3,8 @@ package cueball
 // NOTE: no internal imports in this package
 import (
 	"context"
-	"errors"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
-//	"os"
-	"time"
 )
 
 // TODO options && config
@@ -22,7 +18,7 @@ type Worker interface {
 	Execution
 	New() Worker // TODO no malloc?
 	Name() string
-	FuncInit() error
+	FuncInit()
 }
 
 type Execution interface {
@@ -30,19 +26,15 @@ type Execution interface {
 	Load(...Method)
 	ID() uuid.UUID
 	Retry() bool
+	Stage() Stage
+	SetStage(Stage)
 }
 
 type State interface {
 	Get(context.Context, Worker, uuid.UUID) error
-	Persist(context.Context, Worker, cueball.Stage) error
+	Persist(context.Context, Worker, Stage) error
 	Enqueue(context.Context, Worker) error
 	Dequeue(context.Context, Worker) error
 	LoadWork(context.Context, Worker) error
-}
-
-type Operation interface {
-	Load(Worker)
-	Workers() map[string]Worker
-	Channel() chan Worker
 }
 

@@ -17,9 +17,8 @@ func (s *StageWorker) Name() string {
 	return "stage-worker"
 }
 
-func (s *StageWorker) FuncInit() error {
+func (s *StageWorker) FuncInit() {
 	s.Load(s.Stage1, s.Stage2, s.Stage3)
-	return nil
 }
 
 func (s *StageWorker) Printer(ctx context.Context) {

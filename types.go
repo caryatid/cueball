@@ -2,6 +2,7 @@ package cueball
 
 import (
 	"encoding/json"
+	"database/sql/driver"
 )
 
 type EndError struct{}
@@ -15,7 +16,6 @@ func (e *EnumError) Error() string {
 	return "invalid enum value"
 }
 
-// TODO Scanner && Valuer interfaces?
 type Stage int
 
 const (
@@ -24,25 +24,57 @@ const (
 	RETRY
 	NEXT
 	DONE
+	FAIL
 )
 
-var StageStr = map[int]string{0: "INIT", 1: "RUNNING", 2: "RETRY", 3: "NEXT", 4: "DONE"}
-var StageInt = map[string]int{"INIT": 0, "RUNNING": 1, "RETRY": 2, "NEXT": 3, "DONE": 4}
-
+var stage2string = map[Stage]string{
+	INIT: "INIT",
+	RUNNING: "RUNNING",
+	RETRY: "RETRY",
+	NEXT: "NEXT",
+	DONE: "DONE",
+	FAIL: "FAIL"}
+var string2stage = map[string]Stage{
+	"INIT": INIT,
+	"RUNNING": RUNNING,
+	"RETRY": RETRY,
+	"NEXT": NEXT,
+	"DONE": DONE,
+	"FAIL": FAIL}
 func (s *Stage) MarshalJSON() ([]byte, error) {
-	ss := StageStr[int(*s)]
+	ss := stage2string[*s]
 	return json.Marshal(ss)
 }
 
 func (s Stage) String() string {
-	return StageStr[int(s)]
+	return stage2string[s]
 }
 
 func (s *Stage) UnmarshalJSON(b []byte) error {
-	i, ok := StageInt[string(b)]
+	var ss string
+	var ok bool
+	if err := json.Unmarshal(b, &ss); err != nil {
+		return err
+	}
+	*s, ok = string2stage[ss]
 	if !ok {
 		return &EnumError{}
 	}
-	*s = Stage(i)
-	return json.Unmarshal(b, s)
+	return nil
+}
+
+func (s Stage) Value() (driver.Value, error) {
+	return stage2string[s], nil
+}
+
+func (s *Stage) Scan(value interface{}) error {
+	if value == nil {
+		*s = INIT
+		return nil
+	}
+	switch v := value.(type) {
+	case string:	
+		*s = string2stage[v]
+	}
+	return nil
 }
