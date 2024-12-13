@@ -1,14 +1,12 @@
 package cueball
 
 import (
-	"encoding/json"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 )
 
-
-
-var EndError = errors.New("iteration complete") 
+var EndError = errors.New("iteration complete")
 var EnumError = errors.New("invalid enum value")
 var RequeueError = errors.New("re enqueued task")
 
@@ -25,21 +23,22 @@ const (
 )
 
 var stage2string = map[Stage]string{
-	INIT: "INIT",
+	INIT:    "INIT",
 	ENQUEUE: "ENQUEUE",
 	RUNNING: "RUNNING",
-	RETRY: "RETRY",
-	NEXT: "NEXT",
-	DONE: "DONE",
-	FAIL: "FAIL"}
+	RETRY:   "RETRY",
+	NEXT:    "NEXT",
+	DONE:    "DONE",
+	FAIL:    "FAIL"}
 var string2stage = map[string]Stage{
-	"INIT": INIT,
+	"INIT":    INIT,
 	"ENQUEUE": ENQUEUE,
 	"RUNNING": RUNNING,
-	"RETRY": RETRY,
-	"NEXT": NEXT,
-	"DONE": DONE,
-	"FAIL": FAIL}
+	"RETRY":   RETRY,
+	"NEXT":    NEXT,
+	"DONE":    DONE,
+	"FAIL":    FAIL}
+
 func (s *Stage) MarshalJSON() ([]byte, error) {
 	ss := stage2string[*s]
 	return json.Marshal(ss)
@@ -72,7 +71,7 @@ func (s *Stage) Scan(value interface{}) error {
 		return nil
 	}
 	switch v := value.(type) {
-	case string:	
+	case string:
 		*s = string2stage[v]
 	}
 	return nil

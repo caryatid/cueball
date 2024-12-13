@@ -16,7 +16,7 @@ func (s *CountWorker) Name() string {
 
 func (s *CountWorker) FuncInit() {
 	var x []cueball.Method
-	for i:=0; i<10; i++ {
+	for i := 0; i < 10; i++ {
 		x = append(x, s.Inc)
 	}
 	s.Load(x...)
@@ -28,6 +28,6 @@ func (s *CountWorker) New() cueball.Worker {
 }
 
 func (s *CountWorker) Inc(ctx context.Context) error {
-	s.Cnt += 10 
+	s.Cnt += 10
 	return nil
 }

@@ -6,13 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
-var retrymax = 3 // TODO something less lame
+var retrymax = 1 // TODO something less lame
 type Exec struct {
 	Id       uuid.UUID
 	Count    int
 	Current  int
-	Error    string // TODO internal error w/ json interfaces for persistence
-	StageI	 cueball.Stage `json:"stage"`
+	Error    string        // TODO internal error w/ json interfaces for persistence
+	StageI   cueball.Stage `json:"stage"`
 	sequence []cueball.Method
 	// TODO version
 }
@@ -24,7 +24,7 @@ func NewExec() *Exec {
 }
 
 func (e *Exec) Retry() bool {
-	return e.Count <= retrymax
+	return (e.Count - e.Current) <= retrymax
 }
 
 func (e *Exec) ID() uuid.UUID {
@@ -53,7 +53,7 @@ func (e *Exec) Next(ctx context.Context) error {
 }
 
 func (e *Exec) Load(method ...cueball.Method) {
-//	e.sequence = append(e.sequence, method...)
+	//	e.sequence = append(e.sequence, method...)
 	e.sequence = method
 }
 
@@ -61,7 +61,6 @@ func (e *Exec) Stage() cueball.Stage {
 	return e.StageI
 }
 
-func (e *Exec) SetStage(s cueball.Stage) { 
+func (e *Exec) SetStage(s cueball.Stage) {
 	e.StageI = s
 }
-

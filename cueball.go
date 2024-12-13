@@ -6,10 +6,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
+	"io"
 )
 
 // TODO options && config
-var Worker_count = 4
+var Worker_count = 10
 var Lc = zerolog.Ctx // import saver; kinda dumb
 
 type Method func(context.Context) error
@@ -33,18 +34,19 @@ type Execution interface {
 
 type State interface {
 	Operator
-	Get(context.Context, Worker, uuid.UUID) error
+	io.Closer
+	Get(context.Context, uuid.UUID) (Worker, error)
 	Persist(context.Context, Worker) error
 	Enqueue(context.Context, Worker) error
-	Dequeue(context.Context, Worker) error
-	LoadWork(context.Context, Worker, chan Worker) error
+	Dequeue(context.Context) error
+	LoadWork(context.Context) error
 }
 
 type Operator interface {
 	Add(...Worker)
-	Intake() chan Worker
 	Work() chan Worker
+	Intake() chan Worker
+	Store() chan Worker
 	Workers() map[string]Worker
-	Start(context.Context) *errgroup.Group
+	Start(context.Context, State) (*errgroup.Group, context.Context)
 }
-

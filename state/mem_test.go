@@ -1,53 +1,80 @@
 package state
 
 import (
-	"testing"
-	"github.com/stretchr/testify/assert"
 	"context"
-	"github.com/rs/zerolog"
 	"cueball"
 	"cueball/worker"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
 	"os"
+	"testing"
 	"time"
 )
 
-func setup(t *testing.T) (context.Context, *zerolog.Logger, *assert.Assertions) {
+func setup(t *testing.T) (context.Context, *zerolog.Logger, *assert.Assertions, context.CancelFunc) {
 	l := zerolog.New(os.Stdout)
-	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(time.Second*10))
+	ctx, cancel := context.WithDeadline(context.Background(),
+		time.Now().Add(time.Second*23))
 	ctx = l.WithContext(ctx)
-	return ctx, cueball.Lc(ctx), assert.New(t)
+	return ctx, cueball.Lc(ctx), assert.New(t), cancel
 }
 
 func TestMemState(t *testing.T) {
-	ctx, log, assert := setup(t)
+	ctx, log, assert, _ := setup(t)
 	assert.NoError(nil)
 	l := log.With().Str("state", "mem").Logger()
 	ctx = l.WithContext(ctx)
-	sm, err := NewMem(ctx)
-	if err != nil {
-		t.Errorf("Failed %s\n", err.Error())
-	}
-	works := []cueball.Worker {
+	works := []cueball.Worker{
 		new(worker.StageWorker).New(),
 		new(worker.CountWorker).New(),
 	}
-	o := NewOperator(sm, works...)
+	//sm, err := NewMem(ctx, works...)
+	//if err != nil {
+	//	t.Errorf("Failed %s\n", err.Error())
+	//}
+	sm, err := NewPG(ctx, "postgresql://postgres:postgres@localhost:5432",
+		"nats://localhost:4222", works...)
+	if err != nil {
+		t.Errorf("Failed %s\n", err.Error())
+	}
+	g, ctx := sm.Start(ctx, sm)
 	var checks []cueball.Worker
 	for _, w := range works {
-		for i:=0;i<3;i++ {
+		for i := 0; i < 3; i++ {
 			ww := w.New()
+			ww.SetStage(cueball.INIT)
 			checks = append(checks, ww)
-			sm.Persist(ctx, ww)
+			sm.Store() <- ww
 		}
 	}
-	o.Start(ctx)
+	tick := time.NewTicker(time.Millisecond * 250)
+	cx := true
 	for {
 		select {
 		case <-ctx.Done():
-			log.Debug().Msg("CONTEXT CANCELLED")
-		default:
+			sm.Close()
+			return
+		case <-tick.C:
+			cx = true
 			for _, w := range checks {
-				ww, _ := sm.Get(ctx, ww, w.ID())
+				ww, _ := sm.Get(ctx, w.ID())
+				if ww == nil {
+					cx = false
+					continue
+				}
+				if ww.Stage() != cueball.DONE && ww.Stage() != cueball.FAIL {
+					cx = false
+				}
+			}
+			if cx == true {
+				log.Debug().Msg("done")
+				sm.Close()
+				//err = g.Wait()
+				err := g.Wait()
+				if err != nil {
+					l.Debug().Err(err).Msg("wait end")
+				}
+				return
 			}
 		}
 	}

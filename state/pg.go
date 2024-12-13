@@ -5,13 +5,15 @@ import (
 	"context"
 	"cueball"
 	"encoding/json"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
-	"github.com/google/uuid"
+	"sync"
 )
 
 // TODO used prepared statements
-var getfmt = `SELECT data FROM execution_state
+var getfmt = `SELECT worker, data FROM execution_state
 WHERE id = $1
 `
 var persistfmt = `
@@ -21,35 +23,47 @@ VALUES($1, $2, $3, $4);
 
 var loadworkfmt = `
 SELECT worker, data FROM execution_state
-WHERE worker = $1
-AND stage = ANY($2) FOR UPDATE SKIP LOCKED
+WHERE stage = ANY($1); -- FOR UPDATE SKIP LOCKED
 `
 
 type PG struct {
 	*Operator
 	DB   *pgxpool.Pool
 	Nats *nats.Conn
-	Sub  map[string]*nats.Subscription
+	sub  sync.Map
 }
 
 func NewPG(ctx context.Context, dburl string, natsurl string, w ...cueball.Worker) (*PG, error) {
 	var err error
 	s := new(PG)
 	s.Operator = NewOperator(w...)
-	s.Sub = make(map[string]*nats.Subscription)
-	s.DB, err = pgxpool.New(ctx, dburl)
+	config, err := pgxpool.ParseConfig(dburl)
 	if err != nil {
 		return nil, err
 	}
+	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		dt, err := conn.LoadType(ctx, "stage")
+		if err != nil {
+			return err
+		}
+		conn.TypeMap().RegisterType(dt)
+		dta, err := conn.LoadType(ctx, "_stage")
+		if err != nil {
+			return err
+		}
+		conn.TypeMap().RegisterType(dta)
+		return nil
+	}
+	s.DB, err = pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+
 	s.Nats, err = nats.Connect(natsurl)
 	if err != nil {
 		return nil, err
 	}
-	return s, nil
-}
-
-func (s *PG) Get(ctx context.Context, w cueball.Worker, uuid uuid.UUID) error {
-	return s.DB.QueryRow(ctx, getfmt, uuid).Scan(ww) 
+	return s, err
 }
 
 func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
@@ -58,52 +72,106 @@ func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
 		return err
 	}
 	_, err = s.DB.Exec(ctx, persistfmt, w.ID().String(),
-		 w.Stage(), w.Name(), b)
+		w.Stage(), w.Name(), b)
 	return err
 }
 
-func (s *PG) Enqueue(ctx context.Context) error {
-	w := <- s.Intake()
+func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
 	data, err := json.Marshal(w)
 	if err != nil {
 		return err
 	}
-	return s.Nats.Publish("pg."+w.Name(), data)
+	return s.Nats.Publish("cueball.pg."+w.Name(), data)
+}
+
+func (s *PG) deq(msg *nats.Msg, w_ cueball.Worker) error {
+	w := w_.New()
+	if err := json.Unmarshal(msg.Data, w); err != nil {
+		return err
+	}
+	s.Work() <- w
+	return nil
 }
 
 func (s *PG) Dequeue(ctx context.Context) error {
-	var err error
-	for name, w := range o.Workers() {
-		if _, ok := s.Sub[name]; !ok {
-			s.Sub[name], err = s.Nats.QueueSubscribe("pg."+name, name, func (msg *nats.Msg) {
-				// TODO handle errors
-				ww := w.New()
-				if err := json.Unmarshal(msg.Data, ww); err != nil {
-					return 
-				}
-				s.Work() <- ww
-				return msg.AckSync()
-			})
+	// l := cueball.Lc(ctx)
+	for name, w_ := range s.Workers() {
+		sub_, ok := s.sub.Load(name)
+		if !ok {
+			ss := "cueball.pg." + name
+			sub, err := s.Nats.QueueSubscribe(ss, ss,
+				func(msg *nats.Msg) {
+					s.deq(msg, w_)
+				})
 			if err != nil {
 				return err
 			}
+			s.sub.Store(name, sub)
+			continue
+		}
+		sub := sub_.(*nats.Subscription)
+		if !sub.IsValid() {
+			ss := "cueball.pg." + name
+			sub, err := s.Nats.QueueSubscribe(ss, ss,
+				func(msg *nats.Msg) {
+					s.deq(msg, w_)
+				})
+			if err != nil {
+				return err
+			}
+			s.sub.Store(name, sub)
 		}
 	}
+	return nil
 }
 
-func (s *PG) LoadWork(ctx context.Context, w cueball.Worker, ch chan cueball.Worker) error {
-	rows, err := s.DB.Query(ctx, loadworkfmt, w.Name(),
+func (s *PG) Close() error {
+	s.sub.Range(func(_, sub_ any) bool {
+		sub := sub_.(*nats.Subscription)
+		sub.Drain()
+		sub.Unsubscribe()
+		return true
+	})
+	s.Nats.Close()
+	s.DB.Close()
+	return nil
+}
+
+func (s *PG) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
+	var wname string
+	var data string
+	if err := s.DB.QueryRow(ctx, getfmt, uuid).Scan(&wname, &data); err != nil {
+		return nil, err
+	}
+	return s.dum(wname, data)
+}
+
+func (s *PG) LoadWork(ctx context.Context) error {
+	var wname string
+	var data string
+	rows, err := s.DB.Query(ctx, loadworkfmt,
 		[]cueball.Stage{cueball.RETRY, cueball.NEXT, cueball.INIT})
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		ww := w.New()
-		if err := rows.Scan(ww); err != nil {
+		if err := rows.Scan(&wname, &data); err != nil {
 			return err
 		}
-		ch <- ww	
+		w, err := s.dum(wname, data)
+		if err != nil {
+			return err
+		}
+		s.Intake() <- w
 	}
 	return nil
+}
+
+func (s *PG) dum(wname, data string) (cueball.Worker, error) { // data unmarshal
+	w := s.Workers()[wname].New()
+	if err := json.Unmarshal([]byte(data), w); err != nil {
+		return nil, err
+	}
+	return w, nil
 }
