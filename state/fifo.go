@@ -1,7 +1,6 @@
 //go:build linux
 
 // state package for fifo
-//
 package state
 
 import (
@@ -72,13 +71,6 @@ func NewFifo(ctx context.Context, name, dir string, w ...cueball.Worker) (*Fifo,
 	return s, nil
 }
 
-func mkdir(path string) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return os.Mkdir(path, os.ModeDir|0755)
-	}
-	return nil
-}
-
 func (s *Fifo) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	fm, _ := s.filemap()
 	f := fm[uuid.String()]
@@ -135,6 +127,32 @@ func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
 	return nil
 }
 
+func (s *Fifo) Close() error {
+	return nil
+}
+
+func (s *Fifo) LoadWork(ctx context.Context) error {
+	m, err := s.filemap()
+	if err != nil {
+		return err
+	}
+	for _, f := range m {
+		ss := strings.Split(f, ":")
+		if len(ss) < 4 {
+			return err // TODO fixit
+		}
+		stage := ss[2]
+		if stage == "NEXT" || stage == "RETRY" || stage == "INIT" {
+			w, err := s.read(f)
+			if err != nil {
+				return err
+			}
+			s.Intake() <- w
+		}
+	}
+	return nil
+}
+
 func (s *Fifo) filemap() (map[string]string, error) {
 	var curid string
 	var pret int
@@ -184,28 +202,9 @@ func (s *Fifo) read(f string) (cueball.Worker, error) {
 	return w, nil
 }
 
-func (s *Fifo) Close() error {
-	return nil
-}
-
-func (s *Fifo) LoadWork(ctx context.Context) error {
-	m, err := s.filemap()
-	if err != nil {
-		return err
-	}
-	for _, f := range m {
-		ss := strings.Split(f, ":")
-		if len(ss) < 4 {
-			return err // TODO fixit
-		}
-		stage := ss[2]
-		if stage == "NEXT" || stage == "RETRY" || stage == "INIT" {
-			w, err := s.read(f)
-			if err != nil {
-				return err
-			}
-			s.Intake() <- w
-		}
+func mkdir(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return os.Mkdir(path, os.ModeDir|0755)
 	}
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
+	"golang.org/x/sync/errgroup"
 	"sync"
 )
 
@@ -31,6 +32,7 @@ type PG struct {
 	DB   *pgxpool.Pool
 	Nats *nats.Conn
 	sub  sync.Map
+	ch   chan *nats.Msg
 }
 
 func NewPG(ctx context.Context, dburl string, natsurl string, w ...cueball.Worker) (*PG, error) {
@@ -84,52 +86,57 @@ func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
 	return s.Nats.Publish("cueball.pg."+w.Name(), data)
 }
 
-func (s *PG) deq(msg *nats.Msg, w_ cueball.Worker) error {
-	w := w_.New()
-	if err := json.Unmarshal(msg.Data, w); err != nil {
+func (s *PG) newsub(name string) error {
+	ss := "cueball.pg." + name
+	sub, err := s.Nats.QueueSubscribeSync(ss, ss)
+	if err != nil {
 		return err
 	}
-	s.Work() <- w
+	s.sub.Store(name, sub)
 	return nil
 }
 
 func (s *PG) Dequeue(ctx context.Context) error {
 	// l := cueball.Lc(ctx)
-	for name, w_ := range s.Workers() {
-		sub_, ok := s.sub.Load(name)
-		if !ok {
-			ss := "cueball.pg." + name
-			sub, err := s.Nats.QueueSubscribe(ss, ss,
-				func(msg *nats.Msg) {
-					s.deq(msg, w_)
-				})
-			if err != nil {
-				return err
-			}
-			s.sub.Store(name, sub)
-			continue
+	g, ctx := errgroup.WithContext(ctx)
+	for name, _ := range s.Workers() {
+		if _, ok := s.sub.Load(name); !ok {
+			s.newsub(name)
 		}
+		sub_, _ := s.sub.Load(name)
 		sub := sub_.(*nats.Subscription)
 		if !sub.IsValid() {
-			ss := "cueball.pg." + name
-			sub, err := s.Nats.QueueSubscribe(ss, ss,
-				func(msg *nats.Msg) {
-					s.deq(msg, w_)
-				})
-			if err != nil {
-				return err
-			}
-			s.sub.Store(name, sub)
+			sub.Unsubscribe()
+			sub.Drain()
+			s.newsub(name)
 		}
 	}
-	return nil
+	s.sub.Range(func(name_, sub_ any) bool {
+		sub := sub_.(*nats.Subscription)
+		name := name_.(string)
+		g.Go(func() error {
+			for {
+				msg, err := sub.NextMsgWithContext(ctx)
+				if err != nil {
+					return err
+				}
+				w := s.Workers()[name].New()
+				if err := json.Unmarshal(msg.Data, w); err != nil {
+					return err
+				}
+				s.Work() <- w
+			}
+		})
+		return true
+	})
+	return g.Wait()
 }
 
 func (s *PG) Close() error {
 	s.sub.Range(func(_, sub_ any) bool {
 		sub := sub_.(*nats.Subscription)
-		sub.Drain()
 		sub.Unsubscribe()
+		sub.Drain()
 		return true
 	})
 	s.Nats.Close()

@@ -27,17 +27,19 @@ func TestMemState(t *testing.T) {
 	works := []cueball.Worker{
 		new(worker.StageWorker).New(),
 		new(worker.CountWorker).New(),
+		new(worker.StageWorker).New(),
+		new(worker.CountWorker).New(),
 	}
-	//sm, err := NewMem(ctx, works...)
-	//if err != nil {
-	//	t.Errorf("Failed %s\n", err.Error())
-	//}
+	// sm, err := NewMem(ctx, works...)
+	// if err != nil {
+	// 	t.Errorf("Failed %s\n", err.Error())
+	// }
 	sm, err := NewPG(ctx, "postgresql://postgres:postgres@localhost:5432",
 		"nats://localhost:4222", works...)
 	if err != nil {
 		t.Errorf("Failed %s\n", err.Error())
 	}
-	g, ctx := sm.Start(ctx, sm)
+	_, ctx = sm.Start(ctx, sm)
 	var checks []cueball.Worker
 	for _, w := range works {
 		for i := 0; i < 3; i++ {
@@ -70,10 +72,10 @@ func TestMemState(t *testing.T) {
 				log.Debug().Msg("done")
 				sm.Close()
 				//err = g.Wait()
-				err := g.Wait()
-				if err != nil {
-					l.Debug().Err(err).Msg("wait end")
-				}
+				// err := g.Wait()
+				// if err != nil {
+				// 	l.Debug().Err(err).Msg("wait end")
+				// }
 				return
 			}
 		}

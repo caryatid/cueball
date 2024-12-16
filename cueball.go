@@ -10,7 +10,7 @@ import (
 )
 
 // TODO options && config
-var Worker_count = 10
+var Worker_count = 3
 var Lc = zerolog.Ctx // import saver; kinda dumb
 
 type Method func(context.Context) error

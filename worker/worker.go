@@ -4,10 +4,12 @@ import (
 	"context"
 	"cueball"
 	"github.com/google/uuid"
+	"sync"
 )
 
 var retrymax = 1 // TODO something less lame
 type Exec struct {
+	sync.Mutex
 	Id       uuid.UUID
 	Count    int
 	Current  int
@@ -58,9 +60,13 @@ func (e *Exec) Load(method ...cueball.Method) {
 }
 
 func (e *Exec) Stage() cueball.Stage {
+	e.Lock()
+	defer e.Unlock()
 	return e.StageI
 }
 
 func (e *Exec) SetStage(s cueball.Stage) {
+	e.Lock()
+	defer e.Unlock()
 	e.StageI = s
 }

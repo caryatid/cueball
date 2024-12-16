@@ -58,54 +58,57 @@ func (o *Operator) Workers() map[string]cueball.Worker {
 
 func (o *Operator) Start(ctx_ context.Context, s cueball.State) (g *errgroup.Group, ctx context.Context) {
 	g, ctx = errgroup.WithContext(ctx_)
-	l := cueball.Lc(ctx)
-		if err := s.Dequeue(ctx); err != nil {
-			l.Debug().Err(err).Msg("deq error")
-			return
-		}
-	for i := 0; i <= cueball.Worker_count; i++ {
-		g.Go(func() error {
-			for {
-				if err := o.do(ctx, g, s); err != nil && 
-						errors.Is(err, context.Canceled) {
-					return nil
-				} else if err != nil {
-					l.Debug().Err(err).Msg("do failed")
-					return err
-				}
-			}
-		})
-	}
+	// l := cueball.Lc(ctx)
+	o.do(ctx, g, s)
 	return
 }
 
-func (o *Operator) do(ctx context.Context, g *errgroup.Group, s cueball.State) error {
+func (o *Operator) do(ctx context.Context, g *errgroup.Group, s cueball.State) {
 	log := cueball.Lc(ctx)
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case w := <-o.intake:
-		w.SetStage(cueball.ENQUEUE)
-		if err := s.Enqueue(ctx, w); err != nil {
-			log.Debug().Err(err).Msg("Enqueue error")
-			return err
+	g.Go(func() error {
+		for {
+			if err := s.Dequeue(ctx); err != nil {
+				log.Debug().Err(err).Msg("deq error")
+				return err
+			}
 		}
-		o.store <- w
-	case w := <-o.store:
-		if err := s.Persist(ctx, w); err != nil {
-			log.Debug().Err(err).Msg("Persist error")
-			return err
+	})
+	g.Go(func() error {
+		for {
+			w := <-o.intake
+			w.SetStage(cueball.ENQUEUE)
+			if err := s.Enqueue(ctx, w); err != nil {
+				log.Debug().Err(err).Msg("Enqueue error")
+				return err
+			}
+			o.store <- w
 		}
-	case <-o.ltick.C: // could be abberant under load
-		if err := s.LoadWork(ctx); err != nil {
-			log.Debug().Err(err).Msg("Load work error")
-			return err
+	})
+	g.Go(func() error {
+		for {
+			w := <-o.store
+			if err := s.Persist(ctx, w); err != nil {
+				log.Debug().Err(err).Msg("Persist error")
+				return err
+			}
 		}
-	case w := <-o.work:
-		w.FuncInit()
-		o.runstage(ctx, s, w)
-	}
-	return nil
+	})
+	g.Go(func() error {
+		for {
+			<-o.ltick.C
+			if err := s.LoadWork(ctx); err != nil {
+				log.Debug().Err(err).Msg("Load work error")
+				return err
+			}
+		}
+	})
+	g.Go(func() error {
+		for {
+			w := <-o.work
+			w.FuncInit()
+			o.runstage(ctx, s, w)
+		}
+	})
 }
 
 func (o *Operator) runstage(ctx context.Context, s cueball.State, w cueball.Worker) {
