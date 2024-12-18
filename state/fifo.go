@@ -95,20 +95,27 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
 }
 
 func (s *Fifo) Dequeue(ctx context.Context) error {
-	data, err := bufio.NewReader(s.out).ReadString('\n')
-	if err != nil {
-		return err
+	t := time.NewTicker(time.Millisecond * 5)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-t.C:
+			data, err := bufio.NewReader(s.out).ReadString('\n')
+			if err != nil {
+				return err
+			}
+			p := new(Pack)
+			if err := unmarshal(data, p); err != nil {
+				return err
+			}
+			w := s.Workers()[p.Name].New()
+			if err := unmarshal(p.Codec, w); err != nil {
+				return err
+			}
+			s.Work() <- w
+		}
 	}
-	p := new(Pack)
-	if err := unmarshal(data, p); err != nil {
-		return err
-	}
-	w := s.Workers()[p.Name].New()
-	if err := unmarshal(p.Codec, w); err != nil {
-		return err
-	}
-	s.Work() <- w
-	return nil
 }
 
 func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
@@ -132,25 +139,32 @@ func (s *Fifo) Close() error {
 }
 
 func (s *Fifo) LoadWork(ctx context.Context) error {
-	m, err := s.filemap()
-	if err != nil {
-		return err
-	}
-	for _, f := range m {
-		ss := strings.Split(f, ":")
-		if len(ss) < 4 {
-			return err // TODO fixit
-		}
-		stage := ss[2]
-		if stage == "NEXT" || stage == "RETRY" || stage == "INIT" {
-			w, err := s.read(f)
+	t := time.NewTicker(time.Millisecond * 150)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-t.C:
+			m, err := s.filemap()
 			if err != nil {
 				return err
 			}
-			s.Intake() <- w
+			for _, f := range m {
+				ss := strings.Split(f, ":")
+				if len(ss) < 4 {
+					return err // TODO fixit
+				}
+				stage := ss[2]
+				if stage == "NEXT" || stage == "RETRY" || stage == "INIT" {
+					w, err := s.read(f)
+					if err != nil {
+						return err
+					}
+					s.Intake() <- w
+				}
+			}
 		}
 	}
-	return nil
 }
 
 func (s *Fifo) filemap() (map[string]string, error) {

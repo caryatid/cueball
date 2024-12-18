@@ -13,6 +13,7 @@ import (
 	"sync"
 )
 
+var prefix = "cueball.pg."
 // TODO used prepared statements
 var getfmt = `SELECT worker, data FROM execution_state
 WHERE id = $1
@@ -83,74 +84,7 @@ func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
 	if err != nil {
 		return err
 	}
-	return s.Nats.Publish("cueball.pg."+w.Name(), data)
-}
-
-func (s *PG) newsub(name string) error {
-	ss := "cueball.pg." + name
-	sub, err := s.Nats.QueueSubscribeSync(ss, ss)
-	if err != nil {
-		return err
-	}
-	s.sub.Store(name, sub)
-	return nil
-}
-
-func (s *PG) Dequeue(ctx context.Context) error {
-	// l := cueball.Lc(ctx)
-	g, ctx := errgroup.WithContext(ctx)
-	for name, _ := range s.Workers() {
-		if _, ok := s.sub.Load(name); !ok {
-			s.newsub(name)
-		}
-		sub_, _ := s.sub.Load(name)
-		sub := sub_.(*nats.Subscription)
-		if !sub.IsValid() {
-			sub.Unsubscribe()
-			sub.Drain()
-			s.newsub(name)
-		}
-	}
-	s.sub.Range(func(name_, sub_ any) bool {
-		sub := sub_.(*nats.Subscription)
-		name := name_.(string)
-		g.Go(func() error {
-			for {
-				msg, err := sub.NextMsgWithContext(ctx)
-				if err != nil {
-					return err
-				}
-				w := s.Workers()[name].New()
-				if err := json.Unmarshal(msg.Data, w); err != nil {
-					return err
-				}
-				s.Work() <- w
-			}
-		})
-		return true
-	})
-	return g.Wait()
-}
-
-func (s *PG) Close() error {
-	s.sub.Range(func(_, sub_ any) bool {
-		sub := sub_.(*nats.Subscription)
-		sub.Unsubscribe()
-		sub.Drain()
-		return true
-	})
-	s.Nats.Close()
-	s.DB.Close()
-	return nil
-}
-
-func (s *PG) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
-	var wname string
-	var data string
-	if err := s.DB.QueryRow(ctx, getfmt, uuid).Scan(&wname, &data); err != nil {
-		return nil, err
-	}
-	return s.dum(wname, data)
+	return s.Nats.Publish(prefix+w.Name(), data)
 }
 
 func (s *PG) LoadWork(ctx context.Context) error {
@@ -173,6 +107,55 @@ func (s *PG) LoadWork(ctx context.Context) error {
 		s.Intake() <- w
 	}
 	return nil
+}
+
+func (s *PG)RegWorker(ctx context.Context, w cueball.Worker) error {
+	name := w.Name()	
+	sub_, ok := s.sub.Load(name)
+	if !ok || !sub_.(*nats.Subscription).IsValid() {
+		if ok {
+			sub_.(*nats.Subscription).Unsubscribe()
+			sub_.(*nats.Subscription).Drain()
+		}
+		ss := prefix+name
+		sub, _ := s.Nats.QueueSubscribeSync(ss, ss) // TODO swallowed error
+		s.sub.Store(name, sub)
+		g.Go(func() error {
+			for {
+				msg, err := sub.NextMsgWithContext(ctx)
+				if err != nil {
+					return err
+				}
+				w := s.Workers()[name].New()
+				if err := json.Unmarshal(msg.Data, w); err != nil {
+					return err
+				}
+				s.Work() <- w
+			}
+		})
+	}
+}
+
+
+func (s *PG) Close() error {
+	s.sub.Range(func(_, sub_ any) bool {
+		sub := sub_.(*nats.Subscription)
+		sub.Unsubscribe()
+		sub.Drain()
+		return true
+	})
+	s.Nats.Close()
+	s.DB.Close()
+	return nil
+}
+
+func (s *PG) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
+	var wname string
+	var data string
+	if err := s.DB.QueryRow(ctx, getfmt, uuid).Scan(&wname, &data); err != nil {
+		return nil, err
+	}
+	return s.dum(wname, data)
 }
 
 func (s *PG) dum(wname, data string) (cueball.Worker, error) { // data unmarshal

@@ -5,6 +5,7 @@ import (
 	"context"
 	"cueball"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 	"sync"
 )
 
@@ -58,7 +59,8 @@ func (s *Mem) Close() error {
 func (s *Mem) LoadWork(ctx context.Context) error {
 	s.ids.Range(func(k, w_ any) bool {
 		w, _ := w_.(cueball.Worker)
-		if w.Stage() == cueball.RETRY || w.Stage() == cueball.INIT ||
+		if w.Stage() == cueball.RETRY || 
+			w.Stage() == cueball.INIT ||
 			w.Stage() == cueball.NEXT {
 			s.Intake() <- w
 		}

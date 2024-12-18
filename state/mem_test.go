@@ -14,13 +14,13 @@ import (
 func setup(t *testing.T) (context.Context, *zerolog.Logger, *assert.Assertions, context.CancelFunc) {
 	l := zerolog.New(os.Stdout)
 	ctx, cancel := context.WithDeadline(context.Background(),
-		time.Now().Add(time.Second*23))
+		time.Now().Add(time.Second*10))
 	ctx = l.WithContext(ctx)
 	return ctx, cueball.Lc(ctx), assert.New(t), cancel
 }
 
 func TestMemState(t *testing.T) {
-	ctx, log, assert, _ := setup(t)
+	ctx, log, assert, cancel := setup(t)
 	assert.NoError(nil)
 	l := log.With().Str("state", "mem").Logger()
 	ctx = l.WithContext(ctx)
@@ -30,16 +30,16 @@ func TestMemState(t *testing.T) {
 		new(worker.StageWorker).New(),
 		new(worker.CountWorker).New(),
 	}
-	// sm, err := NewMem(ctx, works...)
-	// if err != nil {
-	// 	t.Errorf("Failed %s\n", err.Error())
-	// }
-	sm, err := NewPG(ctx, "postgresql://postgres:postgres@localhost:5432",
-		"nats://localhost:4222", works...)
+	sm, err := NewMem(ctx, works...)
 	if err != nil {
 		t.Errorf("Failed %s\n", err.Error())
 	}
-	_, ctx = sm.Start(ctx, sm)
+//	sm, err := NewPG(ctx, "postgresql://postgres:postgres@localhost:5432",
+//		"nats://localhost:4222", works...)
+//	if err != nil {
+//		t.Errorf("Failed %s\n", err.Error())
+//	}
+	g, ctx := sm.Start(ctx, sm)
 	var checks []cueball.Worker
 	for _, w := range works {
 		for i := 0; i < 3; i++ {
@@ -64,6 +64,7 @@ func TestMemState(t *testing.T) {
 					cx = false
 					continue
 				}
+				log.Debug().Interface("worker", ww).Send()
 				if ww.Stage() != cueball.DONE && ww.Stage() != cueball.FAIL {
 					cx = false
 				}
@@ -71,11 +72,12 @@ func TestMemState(t *testing.T) {
 			if cx == true {
 				log.Debug().Msg("done")
 				sm.Close()
-				//err = g.Wait()
-				// err := g.Wait()
-				// if err != nil {
-				// 	l.Debug().Err(err).Msg("wait end")
-				// }
+				cancel()
+				err = g.Wait()
+				if err != nil {
+					l.Debug().Err(err).Msg("wait end")
+				}
+				log.Debug().Msg("all the fooking way done")
 				return
 			}
 		}

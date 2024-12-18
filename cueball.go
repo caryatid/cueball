@@ -38,15 +38,15 @@ type State interface {
 	Get(context.Context, uuid.UUID) (Worker, error)
 	Persist(context.Context, Worker) error
 	Enqueue(context.Context, Worker) error
-	Dequeue(context.Context) error
+	RegWorker(context.Context, Worker) error
 	LoadWork(context.Context) error
 }
 
 type Operator interface {
-	Add(...Worker)
 	Work() chan Worker
 	Intake() chan Worker
 	Store() chan Worker
 	Workers() map[string]Worker
-	Start(context.Context, State) (*errgroup.Group, context.Context)
+	AddWorker(context.Context, ...Worker)
+	Start(context.Context) (*errgroup.Group, context.Context)
 }

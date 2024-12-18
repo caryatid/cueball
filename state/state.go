@@ -1,15 +1,16 @@
 package state
 
 import (
+	"time"
 	"context"
 	"cueball"
 	"errors"
 	"golang.org/x/sync/errgroup"
 	"sync"
-	"time"
 )
 
 var ChanSize = 1 // Configuration? Argument to NewOperator?
+var retry_count = 3
 
 type Operator struct {
 	sync.Mutex
@@ -18,25 +19,23 @@ type Operator struct {
 	intake  chan cueball.Worker
 	work    chan cueball.Worker
 	store   chan cueball.Worker
-	tick    *time.Ticker
-	ltick   *time.Ticker
 }
 
-func NewOperator(w ...cueball.Worker) *Operator {
+func NewOperator(ctx context.Context, s cueball.State, w ...cueball.Worker) *Operator {
 	op := new(Operator)
+	op.state = s
 	op.intake = make(chan cueball.Worker, ChanSize)
 	op.work = make(chan cueball.Worker, ChanSize)
 	op.store = make(chan cueball.Worker, ChanSize)
 	op.workers = make(map[string]cueball.Worker)
-	op.tick = time.NewTicker(time.Millisecond * 50)
-	op.ltick = time.NewTicker(time.Millisecond * 111)
-	op.Add(w...)
+	op.AddWorker(ctx, w...)
 	return op
 }
 
-func (o *Operator) Add(w ...cueball.Worker) {
+func (o *Operator) AddWorker(ctx context.Context, w ...cueball.Worker) {
 	for _, ww := range w {
 		o.workers[ww.Name()] = ww
+		op.state.RegWorker(ctx, w)
 	}
 }
 
@@ -57,58 +56,61 @@ func (o *Operator) Workers() map[string]cueball.Worker {
 }
 
 func (o *Operator) Start(ctx_ context.Context, s cueball.State) (g *errgroup.Group, ctx context.Context) {
+	log := cueball.Lc(ctx_)
 	g, ctx = errgroup.WithContext(ctx_)
-	// l := cueball.Lc(ctx)
-	o.do(ctx, g, s)
+	// backgrounders
+	g.Go(func() error {
+		t := time.NewTicker(time.Millisecond * 15)
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-t.C:
+				if err := s.Dequeue(ctx, g); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	g.Go(func() error {
+		t := time.NewTicker(time.Millisecond * 150)
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-t.C:
+				if err := s.LoadWork(ctx); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	g.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case w := <-o.intake:
+				w.SetStage(cueball.ENQUEUE)
+				if err := s.Enqueue(ctx, w); err != nil {
+					log.Debug().Err(err).Msg("Enqueue error")
+					return err
+				}
+				g.Go(func () error { o.store <- w; return nil })
+			case w := <-o.store:
+				if err := s.Persist(ctx, w); err != nil {
+					log.Debug().Err(err).Msg("Persist error")
+					return err
+				}
+			case w := <-o.work:
+				w.FuncInit()
+				g.Go(func () error { o.runstage(ctx, s, w); return nil })
+			}
+		}
+	})
 	return
-}
-
-func (o *Operator) do(ctx context.Context, g *errgroup.Group, s cueball.State) {
-	log := cueball.Lc(ctx)
-	g.Go(func() error {
-		for {
-			if err := s.Dequeue(ctx); err != nil {
-				log.Debug().Err(err).Msg("deq error")
-				return err
-			}
-		}
-	})
-	g.Go(func() error {
-		for {
-			w := <-o.intake
-			w.SetStage(cueball.ENQUEUE)
-			if err := s.Enqueue(ctx, w); err != nil {
-				log.Debug().Err(err).Msg("Enqueue error")
-				return err
-			}
-			o.store <- w
-		}
-	})
-	g.Go(func() error {
-		for {
-			w := <-o.store
-			if err := s.Persist(ctx, w); err != nil {
-				log.Debug().Err(err).Msg("Persist error")
-				return err
-			}
-		}
-	})
-	g.Go(func() error {
-		for {
-			<-o.ltick.C
-			if err := s.LoadWork(ctx); err != nil {
-				log.Debug().Err(err).Msg("Load work error")
-				return err
-			}
-		}
-	})
-	g.Go(func() error {
-		for {
-			w := <-o.work
-			w.FuncInit()
-			o.runstage(ctx, s, w)
-		}
-	})
 }
 
 func (o *Operator) runstage(ctx context.Context, s cueball.State, w cueball.Worker) {
