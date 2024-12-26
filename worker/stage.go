@@ -2,8 +2,8 @@ package worker
 
 import (
 	"context"
-	"cueball"
 	"fmt"
+	"github.com/caryatid/cueball"
 	"math/rand"
 )
 

@@ -2,7 +2,7 @@ package worker
 
 import (
 	"context"
-	"cueball"
+	"github.com/caryatid/cueball"
 )
 
 type CountWorker struct {

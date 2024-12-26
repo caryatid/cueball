@@ -5,8 +5,8 @@ package state
 
 import (
 	"context"
-	"cueball"
 	"errors"
+	"github.com/caryatid/cueball"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 	"sync"

@@ -2,7 +2,7 @@ package state
 
 import (
 	"context"
-	"cueball"
+	"github.com/caryatid/cueball"
 	"sync"
 )
 

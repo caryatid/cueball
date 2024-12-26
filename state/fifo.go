@@ -5,8 +5,8 @@ package state
 import (
 	"bufio"
 	"context"
-	"cueball"
 	"fmt"
+	"github.com/caryatid/cueball"
 	"github.com/google/uuid"
 	"io/fs"
 	"os"

@@ -2,8 +2,8 @@ package state
 
 import (
 	"context"
-	"cueball"
-	"cueball/worker"
+	"github.com/caryatid/cueball"
+	"github.com/caryatid/cueball/worker"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"os"
