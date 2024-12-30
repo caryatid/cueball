@@ -5,79 +5,78 @@ import (
 	"github.com/caryatid/cueball"
 	"github.com/google/uuid"
 	"sync"
+	"time"
 )
 
 var queue_size = 10 // TODO
 
-type Mem struct {
-	cueball.WorkerSet
+type mem struct {
 	sync.Mutex
+	cueball.WorkerSet
 	queue chan cueball.Worker
 	ids   sync.Map
 }
 
-func NewMem(ctx context.Context, w ...cueball.Worker) (*Mem, error) {
-	s := new(Mem)
-	s.WorkerSet = DefaultWorkerSet()
-	s.AddWorker(ctx, w...)
+func NewMem(ctx context.Context, works ...cueball.WorkerGen) (cueball.State, error) {
+	s := new(mem)
+	s.WorkerSet = DefaultWorkerSet(works...)
 	s.queue = make(chan cueball.Worker, queue_size)
 	go s.dequeue(ctx)
 	return s, nil
 }
 
-func (s *Mem) emulateSerialize(w cueball.Worker) cueball.Worker {
-	s.Lock()
-	defer s.Unlock()
-	b, _ := marshal(w)
-	ww := w.New()
-	unmarshal(string(b), ww)
-	return ww
+func (s *mem) emulateSerialize(src, target cueball.Worker) error {
+	b, _ := marshal(src)
+	return unmarshal(string(b), target)
 }
 
-func (s *Mem) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
+func (s *mem) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	w_, ok := s.ids.Load(uuid.String())
 	if !ok {
 		return nil, nil // TODO must error
 	}
-	w, ok := w_.(cueball.Worker)
+	w__, ok := w_.(cueball.Worker)
 	if !ok {
 		return nil, nil // TODO error
 	}
-	return s.emulateSerialize(w), nil
+	w := s.NewWorker(w__.Name())
+	s.emulateSerialize(w__, w)
+	return w, nil
 }
 
-func (s *Mem) Persist(ctx context.Context, w cueball.Worker) error {
+func (s *mem) Persist(ctx context.Context, w cueball.Worker) error {
 	s.ids.Store(w.ID().String(), w)
 	return nil
 }
 
-func (s *Mem) Enqueue(ctx context.Context, w cueball.Worker) error {
+func (s *mem) Enqueue(ctx context.Context, w cueball.Worker) error {
 	s.queue <- w
 	return nil
 }
 
-func (s *Mem) dequeue(ctx context.Context) error {
+func (s *mem) dequeue(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case w := <-s.queue:
-			s.Out() <- w
+			w_ := s.NewWorker(w.Name())
+			s.emulateSerialize(w, w_)
+			s.Work() <- w_
 		}
 	}
 }
 
-func (s *Mem) Close() error {
+func (s *mem) Close() error {
 	return nil
 }
 
-func (s *Mem) LoadWork(ctx context.Context, ch chan cueball.Worker) error {
+func (s *mem) LoadWork(ctx context.Context) error {
 	s.ids.Range(func(k, w_ any) bool {
 		w, _ := w_.(cueball.Worker)
-		if w.Status() == cueball.RETRY ||
-			w.Status() == cueball.INIT ||
-			w.Status() == cueball.NEXT {
-			ch <- s.emulateSerialize(w)
+		if w.Status() == cueball.ENQUEUE && w.GetDefer().Before(time.Now()) {
+			w.SetStatus(cueball.INFLIGHT)
+			s.Enqueue(ctx, w)
 		}
 		return true
 	})

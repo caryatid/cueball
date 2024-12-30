@@ -1,50 +1,49 @@
 package state
 
 import (
-	"context"
 	"github.com/caryatid/cueball"
-	"sync"
 )
 
 type defaultWorkerSet struct {
-	workers sync.Map
-	out     chan cueball.Worker
+	workers map[string]cueball.WorkerGen
+	work    chan cueball.Worker
+	store   chan cueball.Worker
 }
 
-func DefaultWorkerSet() cueball.WorkerSet {
+func DefaultWorkerSet(works ...cueball.WorkerGen) cueball.WorkerSet {
 	ws := new(defaultWorkerSet)
-	ws.out = make(chan cueball.Worker, cueball.ChanSize)
+	ws.work = make(chan cueball.Worker, cueball.ChanSize)
+	ws.store = make(chan cueball.Worker, cueball.ChanSize)
+	ws.workers = make(map[string]cueball.WorkerGen)
+	ws.AddWorker(works...)
 	return ws
 }
 
-func (ws *defaultWorkerSet) Out() chan cueball.Worker {
-	if ws.out == nil {
-	}
-	return ws.out
+func (ws *defaultWorkerSet) Work() chan cueball.Worker {
+	return ws.work
 }
 
-func (ws *defaultWorkerSet) AddWorker(ctx context.Context, w ...cueball.Worker) error {
-	for _, w_ := range w {
-		ws.workers.Store(w_.Name(), w_)
-	}
-	return nil
+func (ws *defaultWorkerSet) Store() chan cueball.Worker {
+	return ws.store
 }
 
-func (ws *defaultWorkerSet) ByName(name string) cueball.Worker {
-	w, ok := ws.workers.Load(name)
+func (ws *defaultWorkerSet) AddWorker(works ...cueball.WorkerGen) {
+	// NOTE: overwrites
+	for _, w := range works {
+		ws.workers[w().Name()] = w // NOTE: makes and discards a worker
+	}
+}
+
+func (ws *defaultWorkerSet) NewWorker(name string) cueball.Worker {
+	w, ok := ws.workers[name]
 	if !ok {
 		// TODO
 		return nil
 	}
-	return w.(cueball.Worker)
+	return w()
 }
 
-// TODO implement as a generic `iter`
-func (ws *defaultWorkerSet) List() []cueball.Worker {
-	var x []cueball.Worker
-	ws.workers.Range(func(_, v any) bool {
-		x = append(x, v.(cueball.Worker))
-		return true
-	})
-	return x
+// TODO implement as a generic `iter`?
+func (ws *defaultWorkerSet) Workers() map[string]cueball.WorkerGen {
+	return ws.workers
 }

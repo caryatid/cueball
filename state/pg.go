@@ -13,35 +13,42 @@ import (
 	"time"
 )
 
+// pub/sub key prefix for nats
 var prefix = "cueball.pg."
 
 // TODO used prepared statements
 var getfmt = `SELECT worker, data FROM execution_state
 WHERE id = $1
 `
+
+// TODO stage -> status
 var persistfmt = `
-INSERT INTO execution_log (id, stage, worker, data)
-VALUES($1, $2, $3, $4);
+INSERT INTO execution_log (id, stage, worker, data, until)
+VALUES($1, $2, $3, $4, $5);
 `
 
 var loadworkfmt = `
-SELECT worker, data FROM execution_state
-WHERE stage = ANY($1); -- FOR UPDATE SKIP LOCKED
+WITH x AS (SELECT id, worker, data, until 
+FROM execution_state WHERE stage = 'ENQUEUE' AND 
+(until IS NULL OR NOW() >= until))
+INSERT INTO execution_log (id, stage, worker, data, until)
+SELECT id, 'INFLIGHT', worker, data, until
+FROM x
+RETURNING worker, data;
 `
 
-type PG struct {
+type pg struct {
 	cueball.WorkerSet
 	DB   *pgxpool.Pool
 	Nats *nats.Conn
 	sub  sync.Map
-	ch   chan *nats.Msg
 }
 
-func NewPG(ctx context.Context, dburl string, natsurl string, w ...cueball.Worker) (*PG, error) {
+func NewPG(ctx context.Context, dburl string, natsurl string,
+	works ...cueball.WorkerGen) (cueball.State, error) {
 	var err error
-	s := new(PG)
-	s.WorkerSet = DefaultWorkerSet()
-	s.AddWorker(ctx, w...)
+	s := new(pg)
+	s.WorkerSet = DefaultWorkerSet(works...)
 	config, err := pgxpool.ParseConfig(dburl)
 	if err != nil {
 		return nil, err
@@ -72,17 +79,18 @@ func NewPG(ctx context.Context, dburl string, natsurl string, w ...cueball.Worke
 	return s, err
 }
 
-func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
+func (s *pg) Persist(ctx context.Context, w cueball.Worker) error {
 	b, err := json.Marshal(w)
 	if err != nil {
 		return err
 	}
 	_, err = s.DB.Exec(ctx, persistfmt, w.ID().String(),
-		w.Status(), w.Name(), b)
+		w.Status(), w.Name(), b, w.GetDefer())
 	return err
 }
 
-func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
+func (s *pg) Enqueue(ctx context.Context, w cueball.Worker) error {
+	w.SetStatus(cueball.INFLIGHT)
 	data, err := json.Marshal(w)
 	if err != nil {
 		return err
@@ -90,11 +98,10 @@ func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
 	return s.Nats.Publish(prefix+w.Name(), data)
 }
 
-func (s *PG) LoadWork(ctx context.Context, ch chan cueball.Worker) error {
+func (s *pg) LoadWork(ctx context.Context) error {
 	var wname string
 	var data string
-	rows, err := s.DB.Query(ctx, loadworkfmt,
-		[]cueball.Status{cueball.RETRY, cueball.NEXT, cueball.INIT})
+	rows, err := s.DB.Query(ctx, loadworkfmt)
 	if err != nil {
 		return err
 	}
@@ -107,14 +114,13 @@ func (s *PG) LoadWork(ctx context.Context, ch chan cueball.Worker) error {
 		if err != nil {
 			return err
 		}
-		ch <- w
+		s.Enqueue(ctx, w)
 	}
 	return nil
 }
 
-func (s *PG) checksubs(ctx context.Context, g *errgroup.Group) error {
-	for _, w := range s.List() {
-		name := w.Name()
+func (s *pg) checksubs(ctx context.Context, g *errgroup.Group) error {
+	for name, _ := range s.Workers() {
 		sub_, ok := s.sub.Load(name)
 		if !ok || !sub_.(*nats.Subscription).IsValid() {
 			if ok {
@@ -133,11 +139,11 @@ func (s *PG) checksubs(ctx context.Context, g *errgroup.Group) error {
 					if err != nil {
 						return err
 					}
-					w := s.ByName(name).New()
+					w := s.NewWorker(name)
 					if err := json.Unmarshal(msg.Data, w); err != nil {
 						return err
 					}
-					s.Out() <- w
+					s.Work() <- w
 				}
 			})
 		}
@@ -145,9 +151,12 @@ func (s *PG) checksubs(ctx context.Context, g *errgroup.Group) error {
 	return nil
 }
 
-func (s *PG) dequeue(ctx context.Context) error {
+func (s *pg) dequeue(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
-	t := time.NewTicker(time.Millisecond * 250)
+	t := time.NewTicker(time.Millisecond * 15)
+	if err := s.checksubs(ctx, g); err != nil {
+		return err
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -160,7 +169,7 @@ func (s *PG) dequeue(ctx context.Context) error {
 	}
 }
 
-func (s *PG) Close() error {
+func (s *pg) Close() error {
 	s.sub.Range(func(_, sub_ any) bool {
 		sub := sub_.(*nats.Subscription)
 		sub.Unsubscribe()
@@ -172,7 +181,7 @@ func (s *PG) Close() error {
 	return nil
 }
 
-func (s *PG) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
+func (s *pg) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	var wname string
 	var data string
 	if err := s.DB.QueryRow(ctx, getfmt, uuid).Scan(&wname, &data); err != nil {
@@ -181,8 +190,8 @@ func (s *PG) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	return s.dum(wname, data)
 }
 
-func (s *PG) dum(wname, data string) (cueball.Worker, error) { // data unmarshal
-	w := s.ByName(wname).New()
+func (s *pg) dum(wname, data string) (cueball.Worker, error) { // data unmarshal
+	w := s.NewWorker(wname)
 	if err := json.Unmarshal([]byte(data), w); err != nil {
 		return nil, err
 	}

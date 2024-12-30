@@ -4,40 +4,38 @@ import (
 	"context"
 	"fmt"
 	"github.com/caryatid/cueball"
+	"github.com/caryatid/cueball/retry"
 	"math/rand"
 )
 
-type StageWorker struct {
+type stageWorker struct {
 	cueball.Executor
 	Word   string
 	Number int
 }
 
-func (s *StageWorker) Name() string {
+func (s *stageWorker) Name() string {
 	return "stage-worker"
 }
 
-func (s *StageWorker) StageInit() {
-	s.Load(s.Stage1, s.Stage2, s.Stage3)
+func (s *stageWorker) Printer(ctx context.Context) {
+	//log := cueball.Lc(ctx)
+	// log.Debug().Interface("worker", s).Msg("from stage worker")
 }
 
-func (s *StageWorker) Printer(ctx context.Context) {
-	log := cueball.Lc(ctx)
-	log.Debug().Interface("worker", s).Msg("from stage worker")
-}
-
-func (s *StageWorker) New() cueball.Worker {
-	sw := &StageWorker{Executor: NewExecutor()}
+func NewStageWorker() cueball.Worker {
+	sw := new(stageWorker)
+	sw.Executor = NewExecutor(retry.NewCount(3, sw.Stage1, sw.Stage2, sw.Stage3)...)
 	return sw
 }
 
-func (s *StageWorker) Stage1(ctx context.Context) error {
+func (s *stageWorker) Stage1(ctx context.Context) error {
 	s.Number = rand.Int() % 10
 	s.Printer(ctx)
 	return nil
 }
 
-func (s *StageWorker) Stage2(ctx context.Context) error {
+func (s *stageWorker) Stage2(ctx context.Context) error {
 	s.Printer(ctx)
 	if s.Number < 4 {
 		s.Number = rand.Int() % 10
@@ -46,7 +44,7 @@ func (s *StageWorker) Stage2(ctx context.Context) error {
 	return nil
 }
 
-func (s *StageWorker) Stage3(ctx context.Context) error {
+func (s *stageWorker) Stage3(ctx context.Context) error {
 	s.Printer(ctx)
 	return nil
 }
