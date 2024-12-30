@@ -4,13 +4,54 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
 // Internal Error definitions
 var (
-	EndError  = errors.New("iteration complete")
 	EnumError = errors.New("invalid enum value")
+	EndError  = errors.New("iteration complete")
 )
+
+func NewError (es ...error) Error {
+	e := Error{}
+	e.Append(es...)
+	return e
+}
+
+type Error struct {
+	wraps []error
+}
+
+func (e Error) Append(es ...error) {
+	e.wraps = append(e.wraps, es...)
+}
+
+func (e Error) Error () string {
+	var ess []string
+	for _, es := range e.wraps {
+		ess = append(ess, es.Error())
+	}
+	return strings.Join(ess, ".")
+}
+
+func (e Error) Unwrap () []error {
+	return e.wraps
+}
+
+func (s Error) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Error())
+}
+
+func (s Error) UnmarshalJSON(b []byte) error {
+	var ss string
+	if err := json.Unmarshal(b, &ss); err != nil {
+		return err
+	}
+	s = NewError(errors.New("from unmarshal: " + ss))
+	return nil
+}
+
 
 // Status enum definition
 type Status int

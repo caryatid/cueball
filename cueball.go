@@ -8,7 +8,7 @@
 // [Worker.StageInit()]. This allows, but does not mandate, complex flows
 // with logic that relies on results from previous stages.
 // State between workflows is managed by persisting the [Worker] structure's
-// fields. More detail persistence in the [cueball/worker] module
+// fields. 
 package cueball
 
 // NOTE: no internal imports in this package

@@ -1,20 +1,26 @@
 package worker
 
 import (
+//	"fmt"
 	"context"
 	"github.com/caryatid/cueball"
 	"github.com/google/uuid"
 	"sync"
 )
 
+type step struct {
+	f cueball.Method
+	Error    cueball.Error
+	Retries int
+}
+
 type defaultExecutor struct {
 	sync.Mutex
 	Id       uuid.UUID
+	Step     int
 	Count    int
-	Current  int
-	Error    string         // TODO internal error w/ json interfaces for persistence
-	StatusI  cueball.Status `json:"stage"`
-	sequence []cueball.Method
+	StatusI  cueball.Status `json:"status"`
+	Sequence []step
 	// TODO version
 }
 
@@ -25,7 +31,11 @@ func NewExecutor() cueball.Executor {
 }
 
 func (e *defaultExecutor) Retry() bool {
-	return (e.Count - e.Current) <= cueball.RetryMax
+	s := e.Step
+	if s >= len(e.Sequence) {
+		s = len(e.Sequence) - 1
+	}
+	return e.Sequence[s].Retries <= cueball.RetryMax
 }
 
 func (e *defaultExecutor) ID() uuid.UUID {
@@ -37,25 +47,27 @@ func (e *defaultExecutor) ID() uuid.UUID {
 
 func (e *defaultExecutor) Next(ctx context.Context) error {
 	e.Count++
-	if e.Current >= len(e.sequence) {
-		return cueball.EndError
+	if e.Step >= len(e.Sequence) {
+		return cueball.NewError(cueball.EndError)
 	}
-	err := e.sequence[e.Current](ctx)
+	err := e.Sequence[e.Step].f(ctx)
 	if err != nil {
-		e.Error = err.Error()
+		e.Sequence[e.Step].Error = cueball.NewError(err)
 		return err
 	}
-	e.Error = "" // clear any previous error
-	e.Current++
-	if e.Current >= len(e.sequence) {
-		return cueball.EndError
+	e.Step++
+	if e.Step >= len(e.Sequence) {
+		return cueball.NewError(cueball.EndError)
 	}
 	return nil
 }
 
 func (e *defaultExecutor) Load(method ...cueball.Method) {
 	// TODO this overwrites the sequence. Simpler than managing append, indexing, etc
-	e.sequence = method
+	e.Sequence = nil
+	for _, m := range method {
+		e.Sequence = append(e.Sequence, step{f: m})
+	}
 }
 
 func (e *defaultExecutor) Status() cueball.Status {

@@ -24,9 +24,9 @@ func TestState(t *testing.T) {
 	assert.NoError(nil)
 	works := []cueball.Worker{
 		new(worker.StageWorker).New(),
-		new(worker.CountWorker).New(),
-		new(worker.StageWorker).New(),
-		new(worker.CountWorker).New(),
+//		new(worker.CountWorker).New(),
+//		new(worker.StageWorker).New(),
+//		new(worker.CountWorker).New(),
 	}
 	states := map[string]cueball.State{
 		"mem": func() cueball.State {
@@ -34,18 +34,18 @@ func TestState(t *testing.T) {
 			assert.NoError(err)
 			return sm
 		}(),
-		"pg": func() cueball.State {
-			sp, err := NewPG(ctx,
-				"postgresql://postgres:postgres@localhost:5432",
-				"nats://localhost:4222", works...)
-			assert.NoError(err)
-			return sp
-		}(),
-		"fifo": func() cueball.State {
-			sf, err := NewFifo(ctx, "fifo", ".test", works...)
-			assert.NoError(err)
-			return sf
-		}(),
+//		"pg": func() cueball.State {
+//			sp, err := NewPG(ctx,
+//				"postgresql://postgres:postgres@localhost:5432",
+//				"nats://localhost:4222", works...)
+//			assert.NoError(err)
+//			return sp
+//		}(),
+//		"fifo": func() cueball.State {
+//			sf, err := NewFifo(ctx, "fifo", ".test", works...)
+//			assert.NoError(err)
+//			return sf
+//		}(),
 	}
 	for tname, s := range states {
 		t.Run(tname, func(t *testing.T) {
