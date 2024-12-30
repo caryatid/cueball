@@ -25,7 +25,6 @@ type Operator struct {
 func NewOperator(ctx context.Context, s cueball.State) *Operator {
 	op := new(Operator)
 	op.state = s
-	op.intake = make(chan cueball.Worker, cueball.ChanSize)
 	op.store = make(chan cueball.Worker, cueball.ChanSize)
 	return op
 }
@@ -49,18 +48,8 @@ func (o *Operator) Start(ctx_ context.Context) (g *errgroup.Group, ctx context.C
 				g.Go(func() error {
 					o.Lock()
 					defer o.Unlock()
-					return o.state.LoadWork(ctx, o.intake)
+					return o.state.LoadWork(ctx)
 				})
-			case w := <-o.intake:
-				g.Go(func() error {
-					w.SetStatus(cueball.ENQUEUE)
-					o.store <- w
-					return o.state.Enqueue(ctx, w)
-				})
-			case w := <-o.store:
-				if err := o.state.Persist(ctx, w); err != nil {
-					return err
-				}
 			case w := <-o.state.Out():
 				g.Go(func() error {
 					w.StageInit()
@@ -103,27 +92,18 @@ func (o *Operator) Done(ctx context.Context, id ...uuid.UUID) bool {
 	return true
 }
 
-func (o *Operator) runstage(ctx context.Context, w cueball.Worker) {
-	err := w.Next(ctx)
-	if err != nil && errors.Is(err, cueball.EndError) {
-		w.SetStatus(cueball.DONE)
-		o.store <- w
-		return
-	} else if err != nil {
-		if w.Retry() {
-			if true { // TODO option to bypass persistence
-				w.SetStatus(cueball.RETRY)
-				o.store <- w
-				return
-			}
-			o.intake <- w
-			return
+// TODO could inline if this func stays small
+func (o *Operator) runstage(ctx context.Context, w cueball.Worker) error {
+	s := w.Step().Current()
+	err := s.Do(ctx)
+	if s.Done() || (err != nil && s.Tries() >= cueball.MaxRetries) {
+		s.SetStatus(cueball.DONE)
+	} else {
+		if cueball.DirectEnqueue {
+			o.state.Enqueue(ctx, w)
+		} else {
+			w.SetStatus(cueball.ENQUEUE)
 		}
-		w.SetStatus(cueball.FAIL)
-		o.store <- w
-		return
 	}
-	w.SetStatus(cueball.NEXT)
-	o.store <- w
-	return
+	return o.state.Persist(ctx, w)
 }

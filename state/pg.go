@@ -25,8 +25,10 @@ VALUES($1, $2, $3, $4);
 `
 
 var loadworkfmt = `
-SELECT worker, data FROM execution_state
-WHERE stage = ANY($1); -- FOR UPDATE SKIP LOCKED
+WITH x AS (SELECT id, worker, data FROM execution_state WHERE stage = 'ENQUEUE')
+INSERT INTO execution_log (id, stage, worker, data)
+VALUES(x.id, 'INFLIGHT', x.worker, x.data)
+RETURNING x.worker, x.data;
 `
 
 type PG struct {
@@ -90,11 +92,10 @@ func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
 	return s.Nats.Publish(prefix+w.Name(), data)
 }
 
-func (s *PG) LoadWork(ctx context.Context, ch chan cueball.Worker) error {
+func (s *PG) LoadWork(ctx context.Context) error {
 	var wname string
 	var data string
-	rows, err := s.DB.Query(ctx, loadworkfmt,
-		[]cueball.Status{cueball.RETRY, cueball.NEXT, cueball.INIT})
+	rows, err := s.DB.Query(ctx, loadworkfmt)
 	if err != nil {
 		return err
 	}
@@ -107,7 +108,7 @@ func (s *PG) LoadWork(ctx context.Context, ch chan cueball.Worker) error {
 		if err != nil {
 			return err
 		}
-		ch <- w
+		s.Enqueue(ctx, w)
 	}
 	return nil
 }

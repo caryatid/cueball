@@ -57,32 +57,20 @@ func (s Error) UnmarshalJSON(b []byte) error {
 type Status int
 
 const (
-	INIT Status = iota
-	ENQUEUE
-	RUNNING
-	RETRY
-	NEXT
+	ENQUEUE Status = iota
+	INFLIGHT
 	DONE
-	FAIL
 )
 
 var status2string = map[Status]string{
-	INIT:    "INIT",
 	ENQUEUE: "ENQUEUE",
-	RUNNING: "RUNNING",
-	RETRY:   "RETRY",
-	NEXT:    "NEXT",
-	DONE:    "DONE",
-	FAIL:    "FAIL"}
+	INFLIGHT:    "INFLIGHT",
+	DONE:    "DONE"}
 
 var string2status = map[string]Status{
-	"INIT":    INIT,
 	"ENQUEUE": ENQUEUE,
-	"RUNNING": RUNNING,
-	"RETRY":   RETRY,
-	"NEXT":    NEXT,
-	"DONE":    DONE,
-	"FAIL":    FAIL}
+	"INFLIGHT": INFLIGHT,
+	"DONE":    DONE}
 
 func (s *Status) MarshalJSON() ([]byte, error) {
 	ss := status2string[*s]

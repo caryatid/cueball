@@ -24,6 +24,7 @@ var (
 	RetryMax    = 3
 	WorkerCount = 3
 	ChanSize    = 1
+	DirectEnqueue = false
 	Lc          = zerolog.Ctx // import saver; kinda dumb
 )
 
@@ -43,12 +44,20 @@ type Worker interface {
 // implementations of Worker. Most of these will be called exclusively
 // by the cueball system.
 type Executor interface {
-	Next(context.Context) error // Actually runs the stage
-	Load(...Method)             // Sets method set for the worker
+	Load(Step)             // Sets method set for the worker
 	ID() uuid.UUID              // returns the worker's unique ID (per workload)
-	Retry() bool                // if to retry or not
 	Status() Status             // Gets worker status
 	SetStatus(Status)           // Set's worker status
+	Step() Step
+}
+
+type Step interface {
+	Do(context.Context) error
+	Current() Step
+	SetNext(Step)
+	Tries() int
+	Done() bool
+	Err() error 
 }
 
 // State interface provides the persistence and queuing layer.
