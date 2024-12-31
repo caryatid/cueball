@@ -5,9 +5,7 @@ package state
 
 import (
 	"context"
-	"errors"
 	"github.com/caryatid/cueball"
-	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 	"sync"
 	"time"
@@ -17,7 +15,6 @@ import (
 type Operator struct {
 	sync.Mutex
 	state  cueball.State
-	intake chan cueball.Worker
 	store  chan cueball.Worker
 }
 
@@ -66,44 +63,14 @@ func (o *Operator) Start(ctx_ context.Context) (g *errgroup.Group, ctx context.C
 	return
 }
 
-// Adds new workers to the queue and returns their id's
-// the new argument determines if the passed workers, with
-// their state, are enqueued, or if new workers of the
-// concrete type passed should be enqueued.
-func (o *Operator) Enqueue(new bool, ww ...cueball.Worker) (uid []uuid.UUID) {
-	for _, w := range ww {
-		wi := w
-		if new {
-			wi = w.New()
-		}
-		uid = append(uid, wi.ID())
-		go func() { o.intake <- wi }()
-	}
-	return
-}
-
-// Works in concert with Enqueue. Reports if given id's are done working.
-func (o *Operator) Done(ctx context.Context, id ...uuid.UUID) bool {
-	for _, uid := range id {
-		w, _ := o.state.Get(ctx, uid)
-		if w == nil {
-			return false
-		}
-		if w.Status() != cueball.DONE && w.Status() != cueball.FAIL {
-			return false
-		}
-	}
-	return true
-}
-
 // TODO could inline if this func stays small
 func (o *Operator) runstage(ctx context.Context, w cueball.Worker) {
-	s := w.Step().Current()
+	s := w.Current()
 	err := s.Do(ctx)
 	if err != nil && s.Tries() >= cueball.MaxRetries {
-		s.SetStatus(cueball.FAIL)
+		w.SetStatus(cueball.FAIL)
 	} else if s.Done() {
-		s.SetStatus(cueball.DONE)
+		w.SetStatus(cueball.DONE)
 	} else {
 		if cueball.DirectEnqueue {
 			o.state.Enqueue(ctx, w)

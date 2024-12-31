@@ -21,7 +21,7 @@ import (
 
 // TODO options && config
 var (
-	RetryMax    = 3
+	MaxRetries    = 3
 	WorkerCount = 3
 	ChanSize    = 1
 	DirectEnqueue = false
@@ -64,17 +64,17 @@ type Step interface {
 type State interface {
 	io.Closer
 	WorkerSet
-	Get(context.Context, uuid.UUID) (Worker, error) // returns a worker given an ID
+	Get(context.Context, Worker) error 
 	Persist(context.Context, Worker) error          // does the persistence of a worker
 	Enqueue(context.Context, Worker) error          // Enqueues for processing (for work)
-	LoadWork(context.Context, chan Worker) error    // Scans the persistent state for workers that should be enqueued
+	LoadWork(context.Context) error    // Scans the persistent state for workers that should be enqueued
 }
 
 // WorkerSet represents the generalized methods to be used
 // by implementations of State. State structs will, generally,
 // add the DefaultWorkerSet as an embedded type
 type WorkerSet interface {
-	AddWorker(context.Context, ...Worker) error
+	AddWorker(context.Context, Worker)
 	ByName(name string) Worker
 	List() []Worker
 	Out() chan Worker

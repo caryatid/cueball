@@ -43,7 +43,6 @@ func NewPG(ctx context.Context, dburl string, natsurl string, w ...cueball.Worke
 	var err error
 	s := new(PG)
 	s.WorkerSet = DefaultWorkerSet()
-	s.AddWorker(ctx, w...)
 	config, err := pgxpool.ParseConfig(dburl)
 	if err != nil {
 		return nil, err
@@ -89,6 +88,7 @@ func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
 	if err != nil {
 		return err
 	}
+	s.AddWorker(ctx, w)
 	return s.Nats.Publish(prefix+w.Name(), data)
 }
 

@@ -8,7 +8,7 @@ import(
 type basicStep struct {
 	stepStatus
 	f cueball.Method
-	next cueball.Step
+	NextI cueball.Step `json:"next"`
 }
 
 type stepStatus struct {
@@ -26,7 +26,7 @@ func (s *stepStatus)Complete() bool {
 }
 
 func (s *basicStep)Next() cueball.Step {
-	return s.next
+	return s.NextI
 }
 
 func (s *basicStep)Done() bool {
@@ -56,8 +56,8 @@ func (s *basicStep) Do(ctx context.Context) error {
 }
 
 func (s *basicStep)Add(cs cueball.Step) cueball.Step {
-	s.next = cs
-	return s.next
+	s.NextI = cs
+	return s.NextI
 }
 
 func BasicStep(m cueball.Method) cueball.Step {
@@ -67,11 +67,11 @@ func BasicStep(m cueball.Method) cueball.Step {
 type coreStep struct {
 	stepStatus
 	Name string
-	next cueball.Step
+	NextI cueball.Step `json:"next"`
 }
 
 func (s *coreStep)Next() cueball.Step {
-	return s.next
+	return s.NextI
 }
 
 
@@ -93,8 +93,8 @@ func (s *coreStep) Do(ctx context.Context) error {
 }
 
 func (s *coreStep)Add(cs cueball.Step) cueball.Step {
-	s.next = cs
-	return s.next
+	s.NextI = cs
+	return s.NextI
 }
 
 func CoreStep(name string) cueball.Step {

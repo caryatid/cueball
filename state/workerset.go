@@ -18,16 +18,11 @@ func DefaultWorkerSet() cueball.WorkerSet {
 }
 
 func (ws *defaultWorkerSet) Out() chan cueball.Worker {
-	if ws.out == nil {
-	}
 	return ws.out
 }
 
-func (ws *defaultWorkerSet) AddWorker(ctx context.Context, w ...cueball.Worker) error {
-	for _, w_ := range w {
-		ws.workers.Store(w_.Name(), w_)
-	}
-	return nil
+func (ws *defaultWorkerSet) AddWorker(ctx context.Context, w cueball.Worker) {
+	ws.workers.Store(w.Name(), w)
 }
 
 func (ws *defaultWorkerSet) ByName(name string) cueball.Worker {

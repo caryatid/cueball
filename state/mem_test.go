@@ -30,19 +30,19 @@ func TestState(t *testing.T) {
 	}
 	states := map[string]cueball.State{
 		"mem": func() cueball.State {
-			sm, err := NewMem(ctx, works...)
+			sm, err := NewMem(ctx)
 			assert.NoError(err)
 			return sm
 		}(),
 //		"pg": func() cueball.State {
 //			sp, err := NewPG(ctx,
 //				"postgresql://postgres:postgres@localhost:5432",
-//				"nats://localhost:4222", works...)
+//				"nats://localhost:4222")
 //			assert.NoError(err)
 //			return sp
 //		}(),
 //		"fifo": func() cueball.State {
-//			sf, err := NewFifo(ctx, "fifo", ".test", works...)
+//			sf, err := NewFifo(ctx, "fifo", ".test")
 //			assert.NoError(err)
 //			return sf
 //		}(),
@@ -54,14 +54,23 @@ func TestState(t *testing.T) {
 			ctx = l.WithContext(ctx)
 			op := NewOperator(ctx, s)
 			g, ctx := op.Start(ctx)
-			checks := op.Enqueue(true, works...)
+			s.Enqueue(ctx, works[0])
 			for {
 				select {
 				case <-ctx.Done():
 					s.Close()
 					return
 				case <-tick.C:
-					if ok := op.Done(ctx, checks...); ok {
+					gtg := true
+					for _,w := range works {
+						s.Get(ctx, w)
+						l.Debug().Interface("worker", w).Send()
+					        if ! w.Done() {
+							gtg = false
+							break
+						}
+					}
+					if gtg {
 						l.Debug().Msg("done")
 						c := make(chan error)
 						go func() {
