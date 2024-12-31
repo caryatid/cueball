@@ -44,20 +44,20 @@ type Worker interface {
 // implementations of Worker. Most of these will be called exclusively
 // by the cueball system.
 type Executor interface {
-	Load(Step)             // Sets method set for the worker
+	Step
 	ID() uuid.UUID              // returns the worker's unique ID (per workload)
 	Status() Status             // Gets worker status
 	SetStatus(Status)           // Set's worker status
-	Step() Step
 }
 
 type Step interface {
 	Do(context.Context) error
 	Current() Step
-	SetNext(Step)
+	Add(Step) Step
 	Tries() int
 	Done() bool
-	Err() error 
+	Complete() bool
+	Next() Step
 }
 
 // State interface provides the persistence and queuing layer.

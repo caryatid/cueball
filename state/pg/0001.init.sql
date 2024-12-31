@@ -3,6 +3,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TYPE stage AS ENUM (
 	'ENQUEUE',
 	'INFLIGHT',
+	'FAIL',
 	'DONE'
 );
 

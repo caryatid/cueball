@@ -15,15 +15,18 @@ func (s *CountWorker) Name() string {
 }
 
 func (s *CountWorker) StageInit() {
-	var x []cueball.Method
+	var ss cueball.Step
 	for i := 0; i < 10; i++ {
-		x = append(x, s.Inc)
+		if ss == nil {
+			ss = s.Add(BasicStep(s.Inc))
+		} else {
+			ss = ss.Add(BasicStep(s.Inc))
+		}
 	}
-	s.Load(x...)
 }
 
 func (s *CountWorker) New() cueball.Worker {
-	sw := &CountWorker{Executor: NewExecutor()}
+	sw := &CountWorker{Executor: NewExecutor(s.Name())}
 	return sw
 }
 

@@ -50,6 +50,10 @@ func (o *Operator) Start(ctx_ context.Context) (g *errgroup.Group, ctx context.C
 					defer o.Unlock()
 					return o.state.LoadWork(ctx)
 				})
+			case w := <-o.store:
+				if err := o.state.Persist(ctx, w); err != nil {
+					return err
+				}
 			case w := <-o.state.Out():
 				g.Go(func() error {
 					w.StageInit()
@@ -93,10 +97,12 @@ func (o *Operator) Done(ctx context.Context, id ...uuid.UUID) bool {
 }
 
 // TODO could inline if this func stays small
-func (o *Operator) runstage(ctx context.Context, w cueball.Worker) error {
+func (o *Operator) runstage(ctx context.Context, w cueball.Worker) {
 	s := w.Step().Current()
 	err := s.Do(ctx)
-	if s.Done() || (err != nil && s.Tries() >= cueball.MaxRetries) {
+	if err != nil && s.Tries() >= cueball.MaxRetries {
+		s.SetStatus(cueball.FAIL)
+	} else if s.Done() {
 		s.SetStatus(cueball.DONE)
 	} else {
 		if cueball.DirectEnqueue {
@@ -105,5 +111,5 @@ func (o *Operator) runstage(ctx context.Context, w cueball.Worker) error {
 			w.SetStatus(cueball.ENQUEUE)
 		}
 	}
-	return o.state.Persist(ctx, w)
+	o.store <- w
 }

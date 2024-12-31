@@ -17,8 +17,11 @@ func (s *StageWorker) Name() string {
 	return "stage-worker"
 }
 
+// Generalize. func to make Step && list of methods
 func (s *StageWorker) StageInit() {
-	s.Load(s.Stage1, s.Stage2, s.Stage3)
+	s.Add(BasicStep(s.Stage1)).
+	Add(BasicStep(s.Stage2)).
+	Add(BasicStep(s.Stage3))
 }
 
 func (s *StageWorker) Printer(ctx context.Context) {
@@ -27,7 +30,7 @@ func (s *StageWorker) Printer(ctx context.Context) {
 }
 
 func (s *StageWorker) New() cueball.Worker {
-	sw := &StageWorker{Executor: NewExecutor()}
+	sw := &StageWorker{Executor: NewExecutor(s.Name())}
 	return sw
 }
 

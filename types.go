@@ -59,17 +59,20 @@ type Status int
 const (
 	ENQUEUE Status = iota
 	INFLIGHT
+	FAIL
 	DONE
 )
 
 var status2string = map[Status]string{
 	ENQUEUE: "ENQUEUE",
 	INFLIGHT:    "INFLIGHT",
+	FAIL:    "FAIL",
 	DONE:    "DONE"}
 
 var string2status = map[string]Status{
 	"ENQUEUE": ENQUEUE,
 	"INFLIGHT": INFLIGHT,
+	"FAIL":    FAIL,
 	"DONE":    DONE}
 
 func (s *Status) MarshalJSON() ([]byte, error) {
@@ -100,7 +103,7 @@ func (s Status) Value() (driver.Value, error) {
 
 func (s *Status) Scan(value interface{}) error {
 	if value == nil {
-		*s = INIT
+		*s = ENQUEUE
 		return nil
 	}
 	switch v := value.(type) {
