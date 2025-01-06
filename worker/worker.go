@@ -7,16 +7,16 @@ import (
 
 type defaultExecutor struct {
 	cueball.Step
-	Id       uuid.UUID
-	Count    int
-	StatusI  cueball.Status `json:"status"`
+	Id      uuid.UUID
+	Count   int
+	StatusI cueball.Status `json:"status"`
 	// TODO version
 }
 
 func NewExecutor(name string) cueball.Executor {
 	e := new(defaultExecutor)
 	e.ID()
-	e.Step = CoreStep(name)
+	e.Step = new(step)
 	return e
 }
 

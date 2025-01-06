@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/caryatid/cueball"
-	"github.com/google/uuid"
 	"io/fs"
 	"os"
 	"slices"
@@ -28,11 +27,10 @@ type Fifo struct {
 	dir string
 }
 
-func NewFifo(ctx context.Context, name, dir string, w ...cueball.Worker) (*Fifo, error) {
+func NewFifo(ctx context.Context, name, dir string) (*Fifo, error) {
 	var err error
 	s := new(Fifo)
 	s.WorkerSet = DefaultWorkerSet()
-	s.AddWorker(ctx, w...)
 	if err = mkdir(dir); err != nil {
 		return nil, err
 	}
@@ -72,10 +70,10 @@ func NewFifo(ctx context.Context, name, dir string, w ...cueball.Worker) (*Fifo,
 	return s, nil
 }
 
-func (s *Fifo) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
+func (s *Fifo) Get(ctx context.Context, w cueball.Worker) error {
 	fm, _ := s.filemap()
-	f := fm[uuid.String()]
-	return s.read(f)
+	f := fm[w.ID().String()]
+	return s.read(f, w)
 }
 
 func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
@@ -98,6 +96,7 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
 func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
 	s.Lock()
 	defer s.Unlock()
+	s.AddWorker(ctx, w)
 	data, err := marshal(w)
 	if err != nil {
 		return err
@@ -117,7 +116,7 @@ func (s *Fifo) Close() error {
 	return nil
 }
 
-func (s *Fifo) LoadWork(ctx context.Context, ch chan cueball.Worker) error {
+func (s *Fifo) LoadWork(ctx context.Context) error {
 	m, err := s.filemap()
 	if err != nil {
 		fmt.Errorf("ohh, %w", err)
@@ -128,13 +127,15 @@ func (s *Fifo) LoadWork(ctx context.Context, ch chan cueball.Worker) error {
 		if len(ss) < 4 {
 			return err // TODO fixit
 		}
-		stage := ss[2]
-		if stage == "NEXT" || stage == "RETRY" || stage == "INIT" {
-			w, err := s.read(f)
-			if err != nil {
+		stage, wname := ss[2], ss[3]
+		if stage == "ENQUEUE" {
+			w := s.ByName(wname).New()
+			if err := s.read(f, w); err != nil {
 				return err
 			}
-			ch <- w
+			w.SetStatus(cueball.INFLIGHT)
+			s.Persist(ctx, w)
+			s.Out() <- w
 		}
 	}
 	return nil
@@ -183,25 +184,20 @@ func (s *Fifo) filemap() (map[string]string, error) {
 	return fm, nil
 }
 
-func (s *Fifo) read(f string) (cueball.Worker, error) {
+func (s *Fifo) read(f string, w cueball.Worker) error {
 	df, err := os.Open(s.dir + "/" + f)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	ss := strings.Split(f, ":")
 	if len(ss) < 4 {
-		return nil, nil // TODO
+		return nil // TODO
 	}
-	name := ss[3]
-	w := s.ByName(name).New()
 	data, err := bufio.NewReader(df).ReadString('\n')
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if err := unmarshal(data, w); err != nil {
-		return nil, err
-	}
-	return w, nil
+	return unmarshal(data, w)
 }
 
 func mkdir(path string) error {

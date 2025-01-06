@@ -13,7 +13,7 @@ var (
 	EndError  = errors.New("iteration complete")
 )
 
-func NewError (es ...error) Error {
+func NewError(es ...error) Error {
 	e := Error{}
 	e.Append(es...)
 	return e
@@ -27,7 +27,7 @@ func (e Error) Append(es ...error) {
 	e.wraps = append(e.wraps, es...)
 }
 
-func (e Error) Error () string {
+func (e Error) Error() string {
 	var ess []string
 	for _, es := range e.wraps {
 		ess = append(ess, es.Error())
@@ -35,7 +35,7 @@ func (e Error) Error () string {
 	return strings.Join(ess, ".")
 }
 
-func (e Error) Unwrap () []error {
+func (e Error) Unwrap() []error {
 	return e.wraps
 }
 
@@ -52,7 +52,6 @@ func (s Error) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-
 // Status enum definition
 type Status int
 
@@ -64,16 +63,16 @@ const (
 )
 
 var status2string = map[Status]string{
-	ENQUEUE: "ENQUEUE",
-	INFLIGHT:    "INFLIGHT",
-	FAIL:    "FAIL",
-	DONE:    "DONE"}
+	ENQUEUE:  "ENQUEUE",
+	INFLIGHT: "INFLIGHT",
+	FAIL:     "FAIL",
+	DONE:     "DONE"}
 
 var string2status = map[string]Status{
-	"ENQUEUE": ENQUEUE,
+	"ENQUEUE":  ENQUEUE,
 	"INFLIGHT": INFLIGHT,
-	"FAIL":    FAIL,
-	"DONE":    DONE}
+	"FAIL":     FAIL,
+	"DONE":     DONE}
 
 func (s *Status) MarshalJSON() ([]byte, error) {
 	ss := status2string[*s]

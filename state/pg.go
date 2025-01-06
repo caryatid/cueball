@@ -84,6 +84,7 @@ func (s *PG) Persist(ctx context.Context, w cueball.Worker) error {
 }
 
 func (s *PG) Enqueue(ctx context.Context, w cueball.Worker) error {
+	w.SetStatus(cueball.INFLIGHT)
 	data, err := json.Marshal(w)
 	if err != nil {
 		return err

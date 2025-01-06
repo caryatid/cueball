@@ -59,7 +59,9 @@ func (s *Mem) dequeue(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case w := <-s.queue:
-			s.Out() <- w
+			w_ := w.New()
+			s.emulateSerialize(w, w_)
+			s.Out() <- w_
 		}
 	}
 }

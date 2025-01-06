@@ -8,7 +8,7 @@
 // [Worker.StageInit()]. This allows, but does not mandate, complex flows
 // with logic that relies on results from previous stages.
 // State between workflows is managed by persisting the [Worker] structure's
-// fields. 
+// fields.
 package cueball
 
 // NOTE: no internal imports in this package
@@ -22,10 +22,10 @@ import (
 // TODO options && config
 var (
 	MaxRetries    = 3
-	WorkerCount = 3
-	ChanSize    = 1
+	WorkerCount   = 3
+	ChanSize      = 1
 	DirectEnqueue = false
-	Lc          = zerolog.Ctx // import saver; kinda dumb
+	Lc            = zerolog.Ctx // import saver; kinda dumb
 )
 
 // All methods used for stages must be of this signature
@@ -45,29 +45,29 @@ type Worker interface {
 // by the cueball system.
 type Executor interface {
 	Step
-	ID() uuid.UUID              // returns the worker's unique ID (per workload)
-	Status() Status             // Gets worker status
-	SetStatus(Status)           // Set's worker status
+	ID() uuid.UUID    // returns the worker's unique ID (per workload)
+	Status() Status   // Gets worker status
+	SetStatus(Status) // Set's worker status
 }
 
 type Step interface {
 	Do(context.Context) error
-	Current() Step
-	Add(Step) Step
 	Tries() int
-	Done() bool
 	Complete() bool
 	Next() Step
+	Load(...Method) // Loads Executer with steps
+	Current() Step
+	Done() bool
 }
 
 // State interface provides the persistence and queuing layer.
 type State interface {
 	io.Closer
 	WorkerSet
-	Get(context.Context, Worker) error 
-	Persist(context.Context, Worker) error          // does the persistence of a worker
-	Enqueue(context.Context, Worker) error          // Enqueues for processing (for work)
-	LoadWork(context.Context) error    // Scans the persistent state for workers that should be enqueued
+	Get(context.Context, Worker) error
+	Persist(context.Context, Worker) error // does the persistence of a worker
+	Enqueue(context.Context, Worker) error // Enqueues for processing (for work)
+	LoadWork(context.Context) error        // Scans the persistent state for workers that should be enqueued
 }
 
 // WorkerSet represents the generalized methods to be used

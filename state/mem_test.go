@@ -24,9 +24,9 @@ func TestState(t *testing.T) {
 	assert.NoError(nil)
 	works := []cueball.Worker{
 		new(worker.StageWorker).New(),
-//		new(worker.CountWorker).New(),
-//		new(worker.StageWorker).New(),
-//		new(worker.CountWorker).New(),
+		new(worker.CountWorker).New(),
+		new(worker.StageWorker).New(),
+		new(worker.CountWorker).New(),
 	}
 	states := map[string]cueball.State{
 		"mem": func() cueball.State {
@@ -34,18 +34,18 @@ func TestState(t *testing.T) {
 			assert.NoError(err)
 			return sm
 		}(),
-//		"pg": func() cueball.State {
-//			sp, err := NewPG(ctx,
-//				"postgresql://postgres:postgres@localhost:5432",
-//				"nats://localhost:4222")
-//			assert.NoError(err)
-//			return sp
-//		}(),
-//		"fifo": func() cueball.State {
-//			sf, err := NewFifo(ctx, "fifo", ".test")
-//			assert.NoError(err)
-//			return sf
-//		}(),
+		//		"pg": func() cueball.State {
+		//			sp, err := NewPG(ctx,
+		//				"postgresql://postgres:postgres@localhost:5432",
+		//				"nats://localhost:4222")
+		//			assert.NoError(err)
+		//			return sp
+		//		}(),
+		"fifo": func() cueball.State {
+			sf, err := NewFifo(ctx, "fifo", ".test")
+			assert.NoError(err)
+			return sf
+		}(),
 	}
 	for tname, s := range states {
 		t.Run(tname, func(t *testing.T) {
@@ -54,7 +54,9 @@ func TestState(t *testing.T) {
 			ctx = l.WithContext(ctx)
 			op := NewOperator(ctx, s)
 			g, ctx := op.Start(ctx)
-			s.Enqueue(ctx, works[0])
+			for _, w := range works {
+				s.Enqueue(ctx, w)
+			}
 			for {
 				select {
 				case <-ctx.Done():
@@ -62,10 +64,10 @@ func TestState(t *testing.T) {
 					return
 				case <-tick.C:
 					gtg := true
-					for _,w := range works {
+					for _, w := range works {
 						s.Get(ctx, w)
-						l.Debug().Interface("worker", w).Send()
-					        if ! w.Done() {
+						// l.Debug().Interface("worker", w).Send()
+						if !w.Done() {
 							gtg = false
 							break
 						}

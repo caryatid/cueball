@@ -1,49 +1,63 @@
 package worker
 
-import(
+import (
 	"context"
 	"github.com/caryatid/cueball"
 )
 
-type basicStep struct {
-	stepStatus
-	f cueball.Method
-	NextI cueball.Step `json:"next"`
+type step struct {
+	f         cueball.Method
+	Error     cueball.Error
+	NextI     *step `json:"next"`
+	TriesI    int   `json:"tries"`
+	CompleteI bool  `json:"complete"`
 }
 
-type stepStatus struct {
-	Error    cueball.Error
-	TriesI int `json:"tries"`
-	CompleteI bool `json:"complete"`
+func (s *step) Load(ms ...cueball.Method) {
+	for i, m := range ms {
+		if i == 0 {
+			s.f = m
+			continue
+		}
+		if s.NextI == nil {
+			s.NextI = &step{f: m}
+		} else {
+			s.NextI.f = m
+		}
+		s = s.NextI
+	}
 }
 
-func (s *stepStatus)Tries() int {
-	return s.TriesI
+func (s *step) Current() cueball.Step {
+	if !s.CompleteI || s.NextI == nil {
+		return s
+	}
+	return s.NextI.Current()
 }
 
-func (s *stepStatus)Complete() bool {
-	return s.CompleteI
+func (s *step) Done() bool {
+	ss := s
+	for ss.NextI != nil {
+		ss = ss.NextI
+	}
+	return ss.CompleteI
 }
 
-func (s *basicStep)Next() cueball.Step {
+func (s *step) Next() cueball.Step {
 	return s.NextI
 }
 
-func (s *basicStep)Done() bool {
-	ss := s.Current()
-	return ss.Complete() && ss.Next() == nil
+func (s *step) Tries() int {
+	return s.TriesI
 }
 
-func (s *basicStep) Current() cueball.Step {
-	if s.Next() == nil || s.Complete() == false {
-		return s
-	}
-	return s.Next().Current()
+func (s *step) Complete() bool {
+	return s.CompleteI
 }
 
-func (s *basicStep) Do(ctx context.Context) error {
-	if s.Complete() { // TODO how to handle per step done-ness
-		return nil 
+func (s *step) Do(ctx context.Context) error {
+	if s.CompleteI { // TODO how to handle per step done-ness
+		return nil
 	}
 	s.TriesI++
 	err := s.f(ctx)
@@ -53,53 +67,4 @@ func (s *basicStep) Do(ctx context.Context) error {
 		s.CompleteI = true
 	}
 	return err
-}
-
-func (s *basicStep)Add(cs cueball.Step) cueball.Step {
-	s.NextI = cs
-	return s.NextI
-}
-
-func BasicStep(m cueball.Method) cueball.Step {
-	return &basicStep{f: m}
-}
-
-type coreStep struct {
-	stepStatus
-	Name string
-	NextI cueball.Step `json:"next"`
-}
-
-func (s *coreStep)Next() cueball.Step {
-	return s.NextI
-}
-
-
-func (s *coreStep)Done() bool {
-	ss := s.Current()
-	return ss.Complete() && ss.Next() == nil
-}
-
-func (s *coreStep) Current() cueball.Step {
-	if s.Next() == nil || s.Complete() == false {
-		return s
-	}
-	return s.Next().Current()
-}
-
-func (s *coreStep) Do(ctx context.Context) error {
-	s.CompleteI = true
-	return nil
-}
-
-func (s *coreStep)Add(cs cueball.Step) cueball.Step {
-	s.NextI = cs
-	return s.NextI
-}
-
-func CoreStep(name string) cueball.Step {
-	return &coreStep{Name: name}
-}
-
-func Stepper(f func (cueball.Method) cueball.Step, ms ...cueball.Method) {
 }

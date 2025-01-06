@@ -14,8 +14,8 @@ import (
 // Operator, as the name suggests, does the do.
 type Operator struct {
 	sync.Mutex
-	state  cueball.State
-	store  chan cueball.Worker
+	state cueball.State
+	store chan cueball.Worker
 }
 
 // The Operator type needs your state implementation
@@ -68,6 +68,7 @@ func (o *Operator) runstage(ctx context.Context, w cueball.Worker) {
 	s := w.Current()
 	err := s.Do(ctx)
 	if err != nil && s.Tries() >= cueball.MaxRetries {
+		cueball.Lc(ctx).Debug().Err(err).Msg(cueball.FAIL.String())
 		w.SetStatus(cueball.FAIL)
 	} else if s.Done() {
 		w.SetStatus(cueball.DONE)
@@ -78,5 +79,6 @@ func (o *Operator) runstage(ctx context.Context, w cueball.Worker) {
 			w.SetStatus(cueball.ENQUEUE)
 		}
 	}
+	// cueball.Lc(ctx).Debug().Interface("W", w).Send()
 	o.store <- w
 }
