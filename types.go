@@ -5,13 +5,37 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 )
 
 // Internal Error definitions
 var (
 	EnumError = errors.New("invalid enum value")
 	EndError  = errors.New("iteration complete")
+	wgens     sync.Map
 )
+
+func RegGen(gens ...WorkerGen) {
+	for _, gen := range gens {
+		wgens.Store(gen().Name(), gen)
+	}
+}
+
+func Gen(name string) Worker {
+	w_, ok := wgens.Load(name)
+	if !ok {
+		return nil // TODO
+	}
+	return w_.(WorkerGen)()
+}
+
+func Workers() (ws []Worker) {
+	wgens.Range(func(n, _ any) bool {
+		ws = append(ws, Gen(n.(string)))
+		return true
+	})
+	return
+}
 
 func NewError(es ...error) *Error {
 	e := new(Error)

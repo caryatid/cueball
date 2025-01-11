@@ -22,7 +22,7 @@ import (
 var pre = ".cue"
 var sep = ":"
 
-type Fifo struct {
+type fifo struct {
 	cueball.WorkerSet
 	sync.Mutex
 	in  *os.File
@@ -37,10 +37,10 @@ type execData struct {
 	wname     string
 }
 
-func NewFifo(ctx context.Context, name, dir string, works ...cueball.WorkerGen) (*Fifo, error) {
+func NewFifo(ctx context.Context, name, dir string) (cueball.State, error) {
 	var err error
-	s := new(Fifo)
-	s.WorkerSet = DefaultWorkerSet(works...)
+	s := new(fifo)
+	s.WorkerSet, ctx = DefaultWorkerSet(ctx)
 	if err = mkdir(dir); err != nil {
 		return nil, err
 	}
@@ -80,7 +80,17 @@ func NewFifo(ctx context.Context, name, dir string, works ...cueball.WorkerGen) 
 	return s, nil
 }
 
-func (s *Fifo) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
+func (s *fifo) Start(ctx context.Context) {
+	t := time.NewTicker(time.Millisecond * 25)
+	Start(ctx, s, t)
+}
+
+func (s *fifo) Wait(ctx context.Context, ws []cueball.Worker) error {
+	t := time.NewTicker(time.Millisecond * 100)
+	return Wait(ctx, s, t, ws)
+}
+
+func (s *fifo) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	// TODO un-fubar
 	fm, _ := s.filemap()
 	return fm[uuid.String()], nil
@@ -104,7 +114,7 @@ func fnameUnpack(fname string) (*execData, error) {
 	return &execData{time.Unix(0, now), time.Unix(0, until), *st, s[3]}, nil
 }
 
-func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
+func (s *fifo) Persist(ctx context.Context, w cueball.Worker) error {
 	dname := s.dir + "/" + w.ID().String()
 	if err := mkdir(dname); err != nil {
 		return err
@@ -124,7 +134,7 @@ func (s *Fifo) Persist(ctx context.Context, w cueball.Worker) error {
 	return f.Sync()
 }
 
-func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
+func (s *fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
 	s.Lock()
 	defer s.Unlock()
 	data, err := marshal(w)
@@ -142,11 +152,11 @@ func (s *Fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
 	return nil
 }
 
-func (s *Fifo) Close() error {
+func (s *fifo) Close() error {
 	return nil
 }
 
-func (s *Fifo) LoadWork(ctx context.Context) error {
+func (s *fifo) LoadWork(ctx context.Context) error {
 	m, err := s.filemap()
 	if err != nil {
 		fmt.Errorf("ohh, %w", err)
@@ -162,7 +172,7 @@ func (s *Fifo) LoadWork(ctx context.Context) error {
 	return nil
 }
 
-func (s *Fifo) filemap() (map[string]cueball.Worker, error) {
+func (s *fifo) filemap() (map[string]cueball.Worker, error) {
 	fm := make(map[string]cueball.Worker)
 	dir, err := os.Open(s.dir)
 	defer dir.Close()
@@ -208,7 +218,7 @@ func (s *Fifo) filemap() (map[string]cueball.Worker, error) {
 			return nil, err
 		}
 		fe, _ := fnameUnpack(f) // already done once; shouldn't error
-		w := s.NewWorker(fe.wname)
+		w := cueball.Gen(fe.wname)
 		err = unmarshal(data, w)
 		fm[id.Name()] = w
 	}
@@ -222,7 +232,7 @@ func mkdir(path string) error {
 	return nil
 }
 
-func (s *Fifo) dequeue(ctx context.Context) error {
+func (s *fifo) dequeue(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -236,7 +246,7 @@ func (s *Fifo) dequeue(ctx context.Context) error {
 			if err := unmarshal(data, p); err != nil {
 				return err
 			}
-			w := s.NewWorker(p.Name)
+			w := cueball.Gen(p.Name)
 			if err := unmarshal(p.Codec, w); err != nil {
 				return err
 			}

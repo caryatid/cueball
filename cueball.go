@@ -1,7 +1,7 @@
 // Package cueball implements an async workflow framework. The package
 // permits different backing state via the [State] interface. There
 // are a few provided implementations of [State].
-// Users of this library will generally implement an object of their
+// Users of this library will implement an object of their
 // own that implements the [Worker] interface.  Generally this means
 // implementing a method for each possible step of a [Worker].
 // This allows, but does not mandate, complex flows
@@ -15,6 +15,7 @@ import (
 	"context"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 	"io"
 	"time"
 )
@@ -56,8 +57,8 @@ type Executor interface {
 	Done() bool               // indicates, regardless of success or failure, the worker is done
 }
 
-// Retry provides an interface to allow different implementations of retry
-// approches. Simple counter and backoff examples are provided.
+// Retry provides an interface to allow different approaches.
+// Simple counter and backoff examples are provided.
 type Retry interface {
 	Again() bool
 	Do(context.Context) error
@@ -69,7 +70,9 @@ type Retry interface {
 // simply use the [state/pg] or [state/nats] implementations.
 type State interface {
 	WorkerSet
-	io.Closer                                       // correct placement to proxy into underlying closers in the specific state implementation
+	io.Closer
+	Start(context.Context)
+	Wait(context.Context, []Worker) error
 	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
 	Persist(context.Context, Worker) error          // does the persistence of a worker
 	Enqueue(context.Context, Worker) error          // Enqueues for processing (for work)
@@ -82,7 +85,5 @@ type State interface {
 type WorkerSet interface {
 	Work() chan Worker
 	Store() chan Worker
-	AddWorker(...WorkerGen)
-	NewWorker(string) Worker
-	Workers() map[string]WorkerGen
+	Group() *errgroup.Group
 }

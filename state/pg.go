@@ -44,11 +44,10 @@ type pg struct {
 	sub  sync.Map
 }
 
-func NewPG(ctx context.Context, dburl string, natsurl string,
-	works ...cueball.WorkerGen) (cueball.State, error) {
+func NewPG(ctx context.Context, dburl string, natsurl string) (cueball.State, error) {
 	var err error
 	s := new(pg)
-	s.WorkerSet = DefaultWorkerSet(works...)
+	s.WorkerSet, ctx = DefaultWorkerSet(ctx)
 	config, err := pgxpool.ParseConfig(dburl)
 	if err != nil {
 		return nil, err
@@ -89,6 +88,16 @@ func (s *pg) Persist(ctx context.Context, w cueball.Worker) error {
 	return err
 }
 
+func (s *pg) Start(ctx context.Context) {
+	t := time.NewTicker(time.Millisecond * 25)
+	Start(ctx, s, t)
+}
+
+func (s *pg) Wait(ctx context.Context, ws []cueball.Worker) error {
+	t := time.NewTicker(time.Millisecond * 100)
+	return Wait(ctx, s, t, ws)
+}
+
 func (s *pg) Enqueue(ctx context.Context, w cueball.Worker) error {
 	w.SetStatus(cueball.INFLIGHT)
 	data, err := json.Marshal(w)
@@ -120,7 +129,8 @@ func (s *pg) LoadWork(ctx context.Context) error {
 }
 
 func (s *pg) checksubs(ctx context.Context, g *errgroup.Group) error {
-	for name, _ := range s.Workers() {
+	for _, w_ := range cueball.Workers() {
+		name := w_.Name()
 		sub_, ok := s.sub.Load(name)
 		if !ok || !sub_.(*nats.Subscription).IsValid() {
 			if ok {
@@ -139,7 +149,7 @@ func (s *pg) checksubs(ctx context.Context, g *errgroup.Group) error {
 					if err != nil {
 						return err
 					}
-					w := s.NewWorker(name)
+					w := cueball.Gen(name)
 					if err := json.Unmarshal(msg.Data, w); err != nil {
 						return err
 					}
@@ -191,7 +201,7 @@ func (s *pg) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 }
 
 func (s *pg) dum(wname, data string) (cueball.Worker, error) { // data unmarshal
-	w := s.NewWorker(wname)
+	w := cueball.Gen(wname)
 	if err := json.Unmarshal([]byte(data), w); err != nil {
 		return nil, err
 	}

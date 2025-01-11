@@ -3,7 +3,6 @@ package retry
 import (
 	"context"
 	"github.com/caryatid/cueball"
-	"math"
 	"time"
 )
 
@@ -26,7 +25,7 @@ func (c *count) Do(ctx context.Context) error {
 }
 
 func (c *count) Again() bool {
-	return c.Tries <= c.Max
+	return c.Tries < c.Max
 }
 
 func (c *count) Defer() time.Time {
@@ -35,17 +34,23 @@ func (c *count) Defer() time.Time {
 
 type backoff struct {
 	*count
-	InitialWindow time.Duration
+	Window time.Duration
 }
 
 func NewBackoff(max int, start_window time.Duration, fs ...cueball.Method) (rs []cueball.Retry) {
 	for _, f := range fs {
-		rs = append(rs, &backoff{count: &count{f: f, Max: max}, InitialWindow: start_window})
+		rs = append(rs, &backoff{count: &count{f: f, Max: max}, Window: start_window})
 	}
 	return
 }
 
+func (b *backoff) Do(ctx context.Context) error {
+	b.Window = b.Window + (b.Window * time.Duration(b.Tries))
+	b.Tries++
+	return b.f(ctx)
+}
+
 func (b *backoff) Defer() time.Time {
-	return time.Now().Add(time.Duration(math.Pow(float64(b.InitialWindow),
-		float64(b.Tries))))
+	t := time.Now().Add(b.Window)
+	return t
 }
