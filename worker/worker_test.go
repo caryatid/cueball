@@ -10,8 +10,7 @@ import (
 func TestWorkers(t *testing.T) {
 	h, ctx := test.TSetup(t)
 	cueball.RegGen(NewCountWorker, NewStageWorker)
-	h.S = test.AllThree(ctx)
-	for tname, s := range h.S {
+	for tname, s := range test.AllThree(ctx) {
 		t.Run(tname, func(t *testing.T) {
 			state.Start(ctx, s)
 			var checks []cueball.Worker

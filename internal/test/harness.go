@@ -15,7 +15,6 @@ type harness struct {
 	L *zerolog.Logger
 	A *assert.Assertions
 	C context.CancelFunc
-	S map[string]cueball.State
 }
 
 func TSetup(t *testing.T) (h *harness, ctx context.Context) {
@@ -26,7 +25,6 @@ func TSetup(t *testing.T) (h *harness, ctx context.Context) {
 	ctx = l.WithContext(ctx)
 	h.L = zerolog.Ctx(ctx)
 	h.A = assert.New(t)
-	h.S = make(map[string]cueball.State)
 	return h, ctx
 }
 
