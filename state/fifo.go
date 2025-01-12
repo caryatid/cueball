@@ -80,6 +80,16 @@ func NewFifo(ctx context.Context, name, dir string) (cueball.State, error) {
 	return s, nil
 }
 
+func (s *fifo) Start(ctx context.Context) {
+	t := time.NewTicker(time.Millisecond * 25)
+	Start(ctx, s, t)
+}
+
+func (s *fifo) Wait(ctx context.Context, ws []cueball.Worker) error {
+	t := time.NewTicker(time.Millisecond * 100)
+	return Wait(ctx, s, t, ws)
+}
+
 func (s *fifo) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	// TODO un-fubar
 	fm, _ := s.filemap()

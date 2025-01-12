@@ -8,14 +8,13 @@ import (
 	"time"
 )
 
-func Start(ctx context.Context, s cueball.State) {
-	t := time.NewTicker(time.Millisecond * 25)
+func Start(ctx context.Context, s cueball.State, tick *time.Ticker) {
 	s.Group().Go(func() error {
 		for {
 			select {
 			case <-ctx.Done():
 				return nil
-			case <-t.C:
+			case <-tick.C:
 				s.Group().Go(func() error {
 					return s.LoadWork(ctx)
 				})
@@ -42,8 +41,8 @@ func Start(ctx context.Context, s cueball.State) {
 	return
 }
 
-func Wait(ctx context.Context, s cueball.State, ws []cueball.Worker) error {
-	tick := time.NewTicker(time.Millisecond * 250)
+func Wait(ctx context.Context, s cueball.State,
+	tick *time.Ticker, ws []cueball.Worker) error {
 	for {
 		select {
 		case <-ctx.Done():

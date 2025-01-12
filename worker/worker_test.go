@@ -3,7 +3,6 @@ package worker
 import (
 	"github.com/caryatid/cueball"
 	"github.com/caryatid/cueball/internal/test"
-	"github.com/caryatid/cueball/state"
 	"testing"
 )
 
@@ -12,7 +11,7 @@ func TestWorkers(t *testing.T) {
 	cueball.RegGen(NewCountWorker, NewStageWorker)
 	for tname, s := range test.AllThree(ctx) {
 		t.Run(tname, func(t *testing.T) {
-			state.Start(ctx, s)
+			s.Start(ctx)
 			var checks []cueball.Worker
 			for _, w := range cueball.Workers() {
 				if err := s.Enqueue(ctx, w); err != nil {
@@ -21,7 +20,7 @@ func TestWorkers(t *testing.T) {
 				}
 				checks = append(checks, w)
 			}
-			h.A.NoError(state.Wait(ctx, s, checks))
+			h.A.NoError(s.Wait(ctx, checks))
 		})
 	}
 }

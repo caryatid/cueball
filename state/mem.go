@@ -30,6 +30,16 @@ func (s *mem) emulateSerialize(src, target cueball.Worker) error {
 	return unmarshal(string(b), target)
 }
 
+func (s *mem) Start(ctx context.Context) {
+	t := time.NewTicker(time.Millisecond * 25)
+	Start(ctx, s, t)
+}
+
+func (s *mem) Wait(ctx context.Context, ws []cueball.Worker) error {
+	t := time.NewTicker(time.Millisecond * 100)
+	return Wait(ctx, s, t, ws)
+}
+
 func (s *mem) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	w_, ok := s.ids.Load(uuid.String())
 	if !ok {

@@ -1,10 +1,10 @@
 package retry
 
 import (
-	"github.com/caryatid/cueball/internal/test"
-	"testing"
 	"context"
 	"errors"
+	"github.com/caryatid/cueball/internal/test"
+	"testing"
 	"time"
 )
 
@@ -17,11 +17,11 @@ func TestRetry(t *testing.T) {
 	rc := NewCount(3, fail)[0]
 	rb := NewBackoff(3, 4*time.Second, fail)[0]
 	var dt time.Time
-	for i:=0; i<4; i++ {
+	for i := 0; i < 4; i++ {
 		rc.Do(ctx)
 		rb.Do(ctx)
 		switch i {
-		case 0,1:
+		case 0, 1:
 			h.A.True(rc.Again(), "retry should be ok")
 			dt = rb.Defer()
 		case 2:
@@ -29,5 +29,5 @@ func TestRetry(t *testing.T) {
 			h.A.True(rb.Defer().After(dt), "timeing is off")
 		}
 	}
-	
+
 }

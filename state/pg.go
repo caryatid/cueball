@@ -88,6 +88,16 @@ func (s *pg) Persist(ctx context.Context, w cueball.Worker) error {
 	return err
 }
 
+func (s *pg) Start(ctx context.Context) {
+	t := time.NewTicker(time.Millisecond * 25)
+	Start(ctx, s, t)
+}
+
+func (s *pg) Wait(ctx context.Context, ws []cueball.Worker) error {
+	t := time.NewTicker(time.Millisecond * 100)
+	return Wait(ctx, s, t, ws)
+}
+
 func (s *pg) Enqueue(ctx context.Context, w cueball.Worker) error {
 	w.SetStatus(cueball.INFLIGHT)
 	data, err := json.Marshal(w)

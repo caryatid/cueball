@@ -70,7 +70,9 @@ type Retry interface {
 // simply use the [state/pg] or [state/nats] implementations.
 type State interface {
 	WorkerSet
-	io.Closer                                       // correct placement to proxy into underlying closers in the specific state implementation
+	io.Closer
+	Start(context.Context)
+	Wait(context.Context, []Worker) error
 	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
 	Persist(context.Context, Worker) error          // does the persistence of a worker
 	Enqueue(context.Context, Worker) error          // Enqueues for processing (for work)
