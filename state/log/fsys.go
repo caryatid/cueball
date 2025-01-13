@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/caryatid/cueball"
+	"github.com/caryatid/cueball/state"
 	"github.com/google/uuid"
 	"io/fs"
 	"os"
@@ -79,7 +80,7 @@ func (l *fsys) store(w cueball.Worker) error {
 		return err
 	}
 	fname := fnamePack(dname, w)
-	d, err := marshal(w)
+	d, err := state.Marshal(w)
 	if err != nil {
 		return err
 	}
@@ -162,7 +163,7 @@ func (l *fsys) filemap() (map[string]cueball.Worker, error) {
 		}
 		fe, _ := fnameUnpack(f) // already done once; shouldn't error
 		w := cueball.Gen(fe.wname)
-		err = unmarshal(data, w)
+		err = state.Unmarshal(data, w)
 		fm[id.Name()] = w
 	}
 	return fm, nil

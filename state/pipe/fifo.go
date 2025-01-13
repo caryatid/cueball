@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"github.com/caryatid/cueball"
+	"github.com/caryatid/cueball/state"
 	"io/fs"
 	"os"
 	"sync"
@@ -65,12 +66,12 @@ func NewFifo(ctx context.Context, name, dir string) (cueball.Pipe, error) {
 
 func (p *fifo) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range ch {
-		data, err := marshal(w)
+		data, err := state.Marshal(w)
 		if err != nil {
 			return err
 		}
-		pk := &Pack{Name: w.Name(), Codec: string(data)}
-		wdata, err := marshal(pk)
+		pk := &state.Pack{Name: w.Name(), Codec: string(data)}
+		wdata, err := state.Marshal(pk)
 		if err != nil {
 			return err
 		}
@@ -88,12 +89,12 @@ func (p *fifo) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 		if err != nil {
 			return err
 		}
-		pk := new(Pack)
-		if err := unmarshal(data, pk); err != nil {
+		pk := new(state.Pack)
+		if err := state.Unmarshal(data, pk); err != nil {
 			return err
 		}
 		w := cueball.Gen(pk.Name)
-		if err := unmarshal(pk.Codec, w); err != nil {
+		if err := state.Unmarshal(pk.Codec, w); err != nil {
 			return err
 		}
 		ch <- w

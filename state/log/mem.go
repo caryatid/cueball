@@ -3,6 +3,7 @@ package log
 import (
 	"context"
 	"github.com/caryatid/cueball"
+	"github.com/caryatid/cueball/state"
 	"github.com/google/uuid"
 	"sync"
 	"time"
@@ -22,8 +23,8 @@ func NewMem(ctx context.Context) (cueball.Log, error) {
 }
 
 func (l *mem) emulateSerialize(src, target cueball.Worker) error {
-	b, _ := marshal(src)
-	return unmarshal(string(b), target)
+	b, _ := state.Marshal(src)
+	return state.Unmarshal(string(b), target)
 }
 
 func (l *mem) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
