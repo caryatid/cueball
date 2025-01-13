@@ -3,12 +3,13 @@ package retry
 import (
 	"context"
 	"errors"
+	"github.com/caryatid/cueball"
 	"github.com/caryatid/cueball/internal/test"
 	"testing"
 	"time"
 )
 
-func fail(ctx context.Context) error {
+func fail(ctx context.Context, s cueball.State) error {
 	return errors.New("intentional fail")
 }
 
@@ -18,8 +19,8 @@ func TestRetry(t *testing.T) {
 	rb := NewBackoff(3, 4*time.Second, fail)[0]
 	var dt time.Time
 	for i := 0; i < 4; i++ {
-		rc.Do(ctx)
-		rb.Do(ctx)
+		rc.Do(ctx, nil)
+		rb.Do(ctx, nil)
 		switch i {
 		case 0, 1:
 			h.A.True(rc.Again(), "retry should be ok")

@@ -48,6 +48,7 @@ func (l *mem) Store(ctx context.Context, ch chan cueball.Worker) error {
 }
 
 func (l *mem) Scan(ctx context.Context, ch chan cueball.Worker) error {
+	defer close(ch)
 	l.ids.Range(func(k, w_ any) bool {
 		w, _ := w_.(cueball.Worker)
 		if w.Status() == cueball.ENQUEUE && 

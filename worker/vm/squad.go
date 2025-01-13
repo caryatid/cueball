@@ -142,7 +142,8 @@ func (s *vmWorker) Name() string {
 	return "vm-worker"
 }
 
-func NewVmWorker() *vmWorker { // concrete type permits field setting
+// func NewVmWorker() *vmWorker { // concrete type permits field setting
+func NewVmWorker() cueball.Worker { // concrete type permits field setting
 	w := new(vmWorker)
 	w.Executor = worker.NewExecutor(retry.NewCount(3, w.pullBinaries)...)
 	w.client = new(http.Client)

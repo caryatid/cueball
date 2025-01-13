@@ -65,6 +65,9 @@ func (l *pg) Store(ctx context.Context, ch chan cueball.Worker) error {
 		}
 		_, err = l.DB.Exec(ctx, persistfmt, w.ID().String(),
 			w.Status(), w.Name(), b, w.GetDefer())
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -72,6 +75,7 @@ func (l *pg) Store(ctx context.Context, ch chan cueball.Worker) error {
 func (l *pg) Scan(ctx context.Context, ch chan cueball.Worker) error {
 	var wname string
 	var data []byte
+	defer close(ch)
 	rows, err := l.DB.Query(ctx, loadworkfmt)
 	if err != nil {
 		return err

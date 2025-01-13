@@ -35,7 +35,7 @@ func (s *defState)run(ctx context.Context, f cueball.RunFunc) chan cueball.Worke
 	return ch
 }
 
-func (s *defState) Start(ctx context.Context) {
+func (s *defState) Start(ctx context.Context) chan cueball.Worker {
 	enq := s.run(ctx, s.Enqueue)
 	deq := s.run(ctx, s.Dequeue)
 	store := s.run(ctx, s.Store)
@@ -50,8 +50,7 @@ func (s *defState) Start(ctx context.Context) {
 		return nil
 	})
 	s.g.Go(func() error {
-		for {
-			w := <- deq
+		for w := range deq {
 			w.Do(ctx, s) // error handled inside
 			if !w.Done() {
 				if cueball.DirectEnqueue {
@@ -64,7 +63,7 @@ func (s *defState) Start(ctx context.Context) {
 		}
 		return nil
 	})
-	return
+	return enq
 }
 
 func (s *defState)Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID) error {

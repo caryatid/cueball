@@ -19,11 +19,10 @@ type natsp struct {
 	g *errgroup.Group
 }
 
-func NewNats(ctx context.Context, g *errgroup.Group,
-		natsurl string) (cueball.Pipe, error) {
+func NewNats(ctx context.Context, natsurl string) (cueball.Pipe, error) {
 	var err error
 	p := new(natsp)
-	p.g = g
+	p.g, ctx = errgroup.WithContext(ctx)
 	p.Nats, err = nats.Connect(natsurl)
 	if err != nil {
 		return nil, err

@@ -96,6 +96,7 @@ func (l *fsys) Store(ctx context.Context, ch chan cueball.Worker) error {
 }
 
 func (l *fsys) Scan(ctx context.Context, ch chan cueball.Worker) error {
+	defer close(ch)
 	m, err := l.filemap()
 	if err != nil {
 		fmt.Errorf("ohh, %w", err)

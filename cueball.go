@@ -69,7 +69,7 @@ type State interface {
 	Pipe
 	Log
 	Blob
-	Start(context.Context)
+	Start(context.Context) chan Worker
 	Wait(context.Context, time.Duration, []uuid.UUID) error
 }
 
