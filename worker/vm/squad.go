@@ -4,18 +4,17 @@ import (
 	"context"
 	"github.com/caryatid/cueball"
 	"github.com/caryatid/cueball/worker"
-//	"text/template"
+	//	"text/template"
 	"github.com/caryatid/cueball/retry"
 	"net"
-	"net/url"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
-
 var (
 	binaries = []string{"vmlinuz-virt", "initramfs-virt", "modloop-virt"}
-	sep = ":"
+	sep      = ":"
 
 	up = `
 if -n { eltest -e /sys/class/net/{{.Bridge.Name}} }
@@ -59,7 +58,7 @@ if { redirfd -w 1 type echo longrun }
 redirfd -w 1 run echo "#!/bin/execlineb -P\nlighttpd -D -f ./data/${squad}-http.conf
 `
 
-	http_run =`
+	http_run = `
 #!/bin/execlineb -P
 lighttpd -D -f ./data/${squad}-http.conf
 
@@ -126,16 +125,16 @@ ${9pargs}  -display none"
 
 type vmWorker struct {
 	cueball.Executor
-	Port int
-	RePull bool
-	Wan  net.Interface
-	Bridge  net.Interface
+	Port     int
+	RePull   bool
+	Wan      net.Interface
+	Bridge   net.Interface
 	Upstream net.Addr
 	// break out/generalize
 	AlpineMirror *url.URL
 	AlpineBranch string
-	AlpineArch string // narrow?
-	client *http.Client
+	AlpineArch   string // narrow?
+	client       *http.Client
 }
 
 func (s *vmWorker) Name() string {
@@ -153,7 +152,7 @@ func NewVmWorker() cueball.Worker { // concrete type permits field setting
 func (w *vmWorker) pullBinaries(ctx context.Context, s cueball.State) error {
 	for _, u := range binaries {
 		// if ! w.Exists(w.key(u)) || w.RePull {
-		if  w.RePull {
+		if w.RePull {
 			resp, err := http.Get(w.AlpineMirror.JoinPath(w.AlpineBranch,
 				"releases", w.AlpineArch, "netboot", u).String())
 			if err != nil {

@@ -51,8 +51,9 @@ func (l *mem) Scan(ctx context.Context, ch chan cueball.Worker) error {
 	defer close(ch)
 	l.ids.Range(func(k, w_ any) bool {
 		w, _ := w_.(cueball.Worker)
-		if w.Status() == cueball.ENQUEUE && 
-				w.GetDefer().Before(time.Now()) {
+		if w.Status() == cueball.ENQUEUE &&
+			w.GetDefer().Before(time.Now()) {
+			w.SetStatus(cueball.INFLIGHT)
 			ch <- w
 		}
 		return true

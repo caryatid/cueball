@@ -108,4 +108,3 @@ func mkdir(path string) error {
 	}
 	return nil
 }
-

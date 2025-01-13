@@ -4,8 +4,8 @@ package log
 
 import (
 	"bufio"
-	"errors"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/caryatid/cueball"
 	"github.com/google/uuid"
@@ -25,7 +25,6 @@ var sep = ":"
 type fsys struct {
 	sync.Mutex
 	dir string
-	store chan cueball.Worker
 }
 
 type metaData struct {
@@ -42,7 +41,6 @@ func NewFsys(ctx context.Context, dir string) (cueball.Log, error) {
 		return nil, err
 	}
 	l.dir = dir
-	l.store = make(chan cueball.Worker)
 	return l, nil
 }
 
@@ -73,24 +71,29 @@ func fnameUnpack(fname string) (*metaData, error) {
 	return &metaData{time.Unix(0, now), time.Unix(0, until), *st, s[3]}, nil
 }
 
+func (l *fsys) store(w cueball.Worker) error {
+	l.Lock()
+	defer l.Unlock()
+	dname := l.dir + "/" + w.ID().String()
+	if err := mkdir(dname); err != nil {
+		return err
+	}
+	fname := fnamePack(dname, w)
+	d, err := marshal(w)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(fname, os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(append(d, '\n'))
+	return err
+}
+
 func (l *fsys) Store(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range ch {
-		dname := l.dir + "/" + w.ID().String()
-		if err := mkdir(dname); err != nil {
-			return err
-		}
-		fname := fnamePack(dname, w)
-		d, err := marshal(w)
-		if err != nil {
-			return err
-		}
-		f, err := os.OpenFile(fname, os.O_WRONLY|os.O_CREATE, 0600)
-		if err != nil {
-			return err
-		}
-		if _, err = f.Write(append(d, '\n')); err != nil {
-			return err
-		}
+		l.store(w)
 	}
 	return nil
 }
@@ -104,6 +107,8 @@ func (l *fsys) Scan(ctx context.Context, ch chan cueball.Worker) error {
 	}
 	for _, w := range m {
 		if w.Status() == cueball.ENQUEUE {
+			w.SetStatus(cueball.INFLIGHT)
+			l.store(w)
 			ch <- w
 		}
 	}
@@ -173,4 +178,3 @@ func mkdir(path string) error {
 func (l *fsys) Close() error {
 	return nil
 }
-

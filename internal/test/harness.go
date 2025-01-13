@@ -5,8 +5,8 @@ import (
 	"github.com/caryatid/cueball"
 	"github.com/caryatid/cueball/state"
 	"github.com/caryatid/cueball/state/blob"
-	"github.com/caryatid/cueball/state/pipe"
 	"github.com/caryatid/cueball/state/log"
+	"github.com/caryatid/cueball/state/pipe"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"os"
@@ -16,6 +16,7 @@ import (
 
 var dbconn = "postgresql://postgres:postgres@localhost:5432"
 var natsconn = "nats://localhost:4222"
+
 type harness struct {
 	L *zerolog.Logger
 	A *assert.Assertions
@@ -34,26 +35,39 @@ func TSetup(t *testing.T) (h *harness, ctx context.Context) {
 }
 
 func AllThree(ctx context.Context, t *testing.T) map[string]cueball.State {
-	var err error
-	lm := make(map[string]cueball.Log)
-	lm["fsys"], _  = log.NewFsys(ctx, "testdir")
-	lm["pg"], _ = log.NewPG(ctx, dbconn)
-	lm["mem"], _ = log.NewMem(ctx)
-	pm := make(map[string]cueball.Pipe)
-	pm["nats"], err = pipe.NewNats(ctx, natsconn)
-	if err != nil {
-		t.Error("failed: %v", err)
-	}
-	pm["fifo"], _  = pipe.NewFifo(ctx, "test.fifo", "testdir")
-	pm["mem"], _  = pipe.NewMem(ctx)
-	bm := make(map[string]cueball.Blob)
-	bm["mem"], _ = blob.NewMem(ctx)
 	m := make(map[string]cueball.State)
-	for ln, l := range lm {
-		for pn, p := range pm {
-			for bn, b := range bm {
-				m[ln + "." + pn + "." + bn], _ =
-					state.NewState(ctx, p, l, b)
+	pm := make(map[string]func() cueball.Pipe)
+	lm := make(map[string]func() cueball.Log)
+	pm["fifo"] = func() cueball.Pipe {
+		p, _ := pipe.NewFifo(ctx, "test.fifo", "testdir")
+		return p
+	}
+	pm["mem"] = func() cueball.Pipe {
+		p, _ := pipe.NewMem(ctx)
+		return p
+	}
+	pm["nats"] = func() cueball.Pipe {
+		p, _ := pipe.NewNats(ctx, natsconn)
+		return p
+	}
+	lm["fsys"] = func() cueball.Log {
+		l, _ := log.NewFsys(ctx, "testdir")
+		return l
+	}
+	lm["pg"] = func() cueball.Log {
+		l, _ := log.NewPG(ctx, dbconn)
+		return l
+	}
+	lm["mem"] = func() cueball.Log {
+		l, _ := log.NewMem(ctx)
+		return l
+	}
+	for _, ln := range []string{"fsys", "pg", "mem"} {
+		for _, pn := range []string{"nats", "fifo", "mem"} {
+			for _, bn := range []string{"mem"} {
+				b, _ := blob.NewMem(ctx)
+				m[ln+"."+pn+"."+bn], _ =
+					state.NewState(ctx, pm[pn](), lm[ln](), b)
 			}
 		}
 	}

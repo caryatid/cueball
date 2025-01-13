@@ -4,8 +4,8 @@ package state
 import (
 	"context"
 	"github.com/caryatid/cueball"
-	"golang.org/x/sync/errgroup"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 	"time"
 )
 
@@ -17,7 +17,7 @@ type defState struct {
 }
 
 func NewState(ctx context.Context, p cueball.Pipe, l cueball.Log,
-		b cueball.Blob) (cueball.State, context.Context) {
+	b cueball.Blob) (cueball.State, context.Context) {
 	s := new(defState)
 	s.Pipe = p
 	s.Log = l
@@ -26,10 +26,9 @@ func NewState(ctx context.Context, p cueball.Pipe, l cueball.Log,
 	return s, ctx
 }
 
-
-func (s *defState)run(ctx context.Context, f cueball.RunFunc) chan cueball.Worker {
+func (s *defState) run(ctx context.Context, f cueball.RunFunc) chan cueball.Worker {
 	ch := make(chan cueball.Worker)
-	s.g.Go(func () error {
+	s.g.Go(func() error {
 		return f(ctx, ch)
 	})
 	return ch
@@ -42,8 +41,6 @@ func (s *defState) Start(ctx context.Context) chan cueball.Worker {
 	s.g.Go(func() error {
 		for {
 			for w := range s.run(ctx, s.Scan) {
-				w.SetStatus(cueball.INFLIGHT)
-				store <- w
 				enq <- w
 			}
 		}
@@ -66,7 +63,7 @@ func (s *defState) Start(ctx context.Context) chan cueball.Worker {
 	return enq
 }
 
-func (s *defState)Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID) error {
+func (s *defState) Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID) error {
 	tick := time.NewTicker(wait)
 	for {
 		select {
@@ -102,6 +99,6 @@ func (s *defState)Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID)
 	}
 }
 
-func (s *defState)Close() error { 
+func (s *defState) Close() error {
 	return nil
 }

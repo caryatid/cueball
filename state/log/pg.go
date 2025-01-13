@@ -21,13 +21,17 @@ VALUES($1, $2, $3, $4, $5);
 `
 
 var loadworkfmt = `
-SELECT worker, data 
+WITH x AS (SELECT id, worker, data, until
 FROM execution_state WHERE stage = 'ENQUEUE' AND 
-(until IS NULL OR NOW() >= until)
+(until IS NULL OR NOW() >= until))
+INSERT INTO execution_log (id, stage, worker, data, until)
+SELECT id, 'INFLIGHT', worker, data, until
+FROM x
+RETURNING worker, data
 `
 
 type pg struct {
-	DB   *pgxpool.Pool
+	DB *pgxpool.Pool
 }
 
 func NewPG(ctx context.Context, dburl string) (cueball.Log, error) {
@@ -89,7 +93,7 @@ func (l *pg) Scan(ctx context.Context, ch chan cueball.Worker) error {
 		if err != nil {
 			return err
 		}
-		ch <- w 
+		ch <- w
 	}
 	return nil
 }

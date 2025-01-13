@@ -6,7 +6,6 @@ import (
 	"io"
 )
 
-
 type mem struct {
 }
 
@@ -22,4 +21,3 @@ func (b *mem) Save(key string, r io.Reader) error {
 func (b *mem) Load(key string) (io.Reader, error) {
 	return nil, nil
 }
-

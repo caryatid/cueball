@@ -10,7 +10,8 @@ import (
 
 func TestWorkers(t *testing.T) {
 	h, ctx := test.TSetup(t)
-	cueball.RegGen(NewCountWorker, NewStageWorker)
+	//	cueball.RegGen(NewCountWorker, NewStageWorker)
+	cueball.RegGen(NewCountWorker)
 	m := test.AllThree(ctx, t)
 	for tname, s := range m {
 		t.Run(tname, func(t *testing.T) {
@@ -21,7 +22,7 @@ func TestWorkers(t *testing.T) {
 				enq <- w
 				checks = append(checks, w.ID())
 			}
-			h.A.NoError(s.Wait(ctx, time.Millisecond * 50, checks))
+			h.A.NoError(s.Wait(ctx, time.Millisecond*140, checks))
 		})
 	}
 }

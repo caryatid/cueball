@@ -38,4 +38,3 @@ func (p *mem) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 	}
 	return nil
 }
-

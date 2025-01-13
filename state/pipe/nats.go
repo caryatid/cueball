@@ -16,7 +16,7 @@ var prefix = "cueball.pg."
 type natsp struct {
 	Nats *nats.Conn
 	sub  sync.Map
-	g *errgroup.Group
+	g    *errgroup.Group
 }
 
 func NewNats(ctx context.Context, natsurl string) (cueball.Pipe, error) {
@@ -44,7 +44,7 @@ func (p *natsp) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 }
 
 func (p *natsp) subread(ctx context.Context, name string,
-				ch chan cueball.Worker) error {
+	ch chan cueball.Worker) error {
 	subname := prefix + name
 	sub, err := p.Nats.QueueSubscribeSync(subname, subname)
 	if err != nil {
@@ -89,8 +89,7 @@ func (p *natsp) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 		case <-ctx.Done():
 			return p.g.Wait()
 		case <-t.C:
-			p.workerscan(ctx,ch)
+			p.workerscan(ctx, ch)
 		}
 	}
 }
-

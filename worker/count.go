@@ -29,7 +29,7 @@ func (w *countWorker) Name() string {
 func (w *countWorker) Inc(ctx context.Context, s cueball.State) error {
 	w.Cnt += 10
 	if w.Cnt >= 100 {
-		cueball.Lc(ctx).Debug().Int("value", w.Cnt).Msg("at or over 100")
+		cueball.Lc(ctx).Debug().Interface("W", w).Msg("at or over 100")
 	}
 	return nil
 }

@@ -49,12 +49,12 @@ type Worker interface {
 // by the cueball system. [Executor] is an interface so it can be embedded
 // into [Worker] and implementers of worker get these methods for free.
 type Executor interface {
-	ID() uuid.UUID            // returns the worker's unique ID (per workload)
-	Status() Status           // Gets worker status
-	SetStatus(Status)         // Set's worker status
+	ID() uuid.UUID                   // returns the worker's unique ID (per workload)
+	Status() Status                  // Gets worker status
+	SetStatus(Status)                // Set's worker status
 	Do(context.Context, State) error // Calls into the current step's retry
-	GetDefer() time.Time      // calls the current steps defer
-	Done() bool               // indicates, regardless of success or failure, the worker is done
+	GetDefer() time.Time             // calls the current steps defer
+	Done() bool                      // indicates, regardless of success or failure, the worker is done
 }
 
 // Retry provides an interface to allow different approaches.
@@ -88,4 +88,3 @@ type Blob interface {
 	Save(string, io.Reader) error
 	Load(string) (io.Reader, error)
 }
-
