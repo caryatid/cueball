@@ -1,48 +1,72 @@
-// Package cueball/state
-
+// Package state manages, you guessed it, state.
 package state
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"github.com/caryatid/cueball"
+	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 	"time"
 )
 
-func Start(ctx context.Context, s cueball.State, tick *time.Ticker) {
-	s.Group().Go(func() error {
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-tick.C:
-				s.Group().Go(func() error {
-					return s.LoadWork(ctx)
-				})
-			case w := <-s.Store():
-				if err := s.Persist(ctx, w); err != nil {
-					return err
-				}
-			case w := <-s.Work():
-				s.Group().Go(func() error {
-					w.Do(ctx) // error handled inside
-					if !w.Done() {
-						if cueball.DirectEnqueue {
-							s.Enqueue(ctx, w)
-						} else {
-							w.SetStatus(cueball.ENQUEUE)
-						}
-					}
-					s.Store() <- w
-					return nil
-				})
-			}
-		}
-	})
-	return
+type defState struct {
+	cueball.Pipe
+	cueball.Log
+	cueball.Blob
+	g *errgroup.Group
 }
 
-func Wait(ctx context.Context, s cueball.State,
-	tick *time.Ticker, ws []cueball.Worker) error {
+func NewState(ctx context.Context, p cueball.Pipe, l cueball.Log,
+	b cueball.Blob) (cueball.State, context.Context) {
+	s := new(defState)
+	s.Pipe = p
+	s.Log = l
+	s.Blob = b
+	s.g, ctx = errgroup.WithContext(ctx)
+	return s, ctx
+}
+
+func (s *defState) Run(ctx context.Context, f cueball.RunFunc) chan cueball.Worker {
+	ch := make(chan cueball.Worker)
+	s.g.Go(func() error {
+		return f(ctx, ch)
+	})
+	return ch
+}
+
+func (s *defState) Start(ctx context.Context) chan cueball.Worker {
+	enq := s.Run(ctx, s.Enqueue)
+	deq := s.Run(ctx, s.Dequeue)
+	store := s.Run(ctx, s.Store)
+	s.g.Go(func() error {
+		for {
+			for w := range s.Run(ctx, s.Scan) {
+				enq <- w
+			}
+		}
+		return nil
+	})
+	s.g.Go(func() error {
+		for w := range deq {
+			w.Do(ctx, s) // error handled inside
+			if !w.Done() {
+				if cueball.DirectEnqueue {
+					enq <- w
+				} else {
+					w.SetStatus(cueball.ENQUEUE)
+				}
+			}
+			store <- w
+		}
+		return nil
+	})
+	return enq
+}
+
+func (s *defState) Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID) error {
+	tick := time.NewTicker(wait)
 	for {
 		select {
 		case <-ctx.Done():
@@ -50,8 +74,8 @@ func Wait(ctx context.Context, s cueball.State,
 			return nil
 		case <-tick.C:
 			gtg := true
-			for _, w_ := range ws {
-				w, err := s.Get(ctx, w_.ID())
+			for _, id := range ids {
+				w, err := s.Get(ctx, id)
 				if err != nil || w == nil {
 					continue
 				}
@@ -64,7 +88,7 @@ func Wait(ctx context.Context, s cueball.State,
 				c := make(chan error)
 				go func() {
 					defer close(c)
-					c <- s.Group().Wait()
+					c <- s.g.Wait()
 				}()
 				select {
 				case err, _ := <-c: // TODO handle ok
@@ -75,4 +99,41 @@ func Wait(ctx context.Context, s cueball.State,
 			}
 		}
 	}
+}
+
+func (s *defState) Close() error {
+	if s.Pipe != nil {
+		s.Pipe.Close()
+	}
+	if s.Log != nil {
+		s.Log.Close()
+	}
+	if s.Blob != nil {
+		//	s.Blob.Close()
+	}
+	return nil
+}
+
+// Pack facilitates multiplexing on an untyped queue
+type Pack struct {
+	Name  string
+	Codec string
+}
+
+func Unmarshal(data string, w interface{}) error {
+	b, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, w)
+}
+
+func Marshal(w interface{}) ([]byte, error) {
+	b, err := json.Marshal(w)
+	if err != nil {
+		return nil, err
+	}
+	data := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
+	base64.StdEncoding.Encode(data, b)
+	return data, nil
 }

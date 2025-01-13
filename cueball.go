@@ -15,7 +15,6 @@ import (
 	"context"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"time"
 )
@@ -29,11 +28,12 @@ var (
 )
 
 // All methods used for stages must be of this signature
-type Method func(context.Context) error
+type Method func(context.Context, State) error
 
 // Function that generates new works of a given type. Used to register
 // workers w/ the [State] implementations
 type WorkerGen func() Worker
+type RunFunc func(ctx context.Context, ch chan Worker) error
 
 // Worker is the interface that must be defined by clients of this library
 // Worker structs will, generally, simply use the DefaultExecuter to register
@@ -49,41 +49,45 @@ type Worker interface {
 // by the cueball system. [Executor] is an interface so it can be embedded
 // into [Worker] and implementers of worker get these methods for free.
 type Executor interface {
-	ID() uuid.UUID            // returns the worker's unique ID (per workload)
-	Status() Status           // Gets worker status
-	SetStatus(Status)         // Set's worker status
-	Do(context.Context) error // Calls into the current step's retry
-	GetDefer() time.Time      // calls the current steps defer
-	Done() bool               // indicates, regardless of success or failure, the worker is done
+	ID() uuid.UUID                   // returns the worker's unique ID (per workload)
+	Status() Status                  // Gets worker status
+	SetStatus(Status)                // Set's worker status
+	Do(context.Context, State) error // Calls into the current step's retry
+	GetDefer() time.Time             // calls the current steps defer
+	Done() bool                      // indicates, regardless of success or failure, the worker is done
 }
 
 // Retry provides an interface to allow different approaches.
 // Simple counter and backoff examples are provided.
 type Retry interface {
 	Again() bool
-	Do(context.Context) error
+	Do(context.Context, State) error
 	Defer() time.Time
 }
 
-// State interface provides the persistence and queuing layer.
-// A few implementations are provided. Most real systems will
-// simply use the [state/pg] or [state/nats] implementations.
 type State interface {
-	WorkerSet
-	io.Closer
-	Start(context.Context)
-	Wait(context.Context, []Worker) error
-	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
-	Persist(context.Context, Worker) error          // does the persistence of a worker
-	Enqueue(context.Context, Worker) error          // Enqueues for processing (for work)
-	LoadWork(context.Context) error                 // Scans the persistent state for workers that should be enqueued
+	Pipe
+	Log
+	Blob
+	Start(context.Context) chan Worker
+	Wait(context.Context, time.Duration, []uuid.UUID) error
+	Run(context.Context, RunFunc) chan Worker
 }
 
-// WorkerSet provides the needful for generating, by name, concrete types
-// with [Worker] interface definitions. Like [Executor] this is an interface
-// for embedding in [State] and not intended to have multiple implementations.
-type WorkerSet interface {
-	Work() chan Worker
-	Store() chan Worker
-	Group() *errgroup.Group
+type Log interface {
+	Close() error
+	Store(context.Context, chan Worker) error
+	Scan(context.Context, chan Worker) error
+	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
+}
+
+type Pipe interface {
+	Close() error
+	Enqueue(context.Context, chan Worker) error
+	Dequeue(context.Context, chan Worker) error
+}
+
+type Blob interface {
+	Save(string, io.Reader) error
+	Load(string) (io.Reader, error)
 }

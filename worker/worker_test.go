@@ -2,25 +2,33 @@ package worker
 
 import (
 	"github.com/caryatid/cueball"
+	"github.com/caryatid/cueball/state"
+	"github.com/caryatid/cueball/state/pipe"
+	"github.com/caryatid/cueball/state/log"
 	"github.com/caryatid/cueball/internal/test"
+	"github.com/google/uuid"
 	"testing"
+	"time"
 )
 
 func TestWorkers(t *testing.T) {
-	h, ctx := test.TSetup(t)
-	cueball.RegGen(NewCountWorker, NewStageWorker)
-	for tname, s := range test.AllThree(ctx) {
-		t.Run(tname, func(t *testing.T) {
-			s.Start(ctx)
-			var checks []cueball.Worker
-			for _, w := range cueball.Workers() {
-				if err := s.Enqueue(ctx, w); err != nil {
-					h.L.Debug().Err(err).Msg("Enqueue fail")
-					return
-				}
-				checks = append(checks, w)
+	assert, ctx := test.TSetup(t)
+	cueball.RegGen(NewTestWorker)
+	p, err := pipe.NewNats(ctx, test.Natsconn)
+	assert.NoError(err)
+	l, err := log.NewPG(ctx, test.Dbconn)
+	assert.NoError(err)
+	s, ctx := state.NewState(ctx, p, l, nil)
+	t.Run("top-level", func(t *testing.T) {
+		enq := s.Start(ctx)
+		var checks []uuid.UUID
+		for i := 0; i < 4; i++ {
+			for _, wname := range cueball.Workers() {
+				w := cueball.Gen(wname)
+				enq <- w
+				checks = append(checks, w.ID())
 			}
-			h.A.NoError(s.Wait(ctx, checks))
-		})
-	}
+		}
+		assert.NoError(s.Wait(ctx, time.Millisecond*140, checks))
+	})
 }

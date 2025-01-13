@@ -11,6 +11,7 @@ type countWorker struct {
 	Cnt int
 }
 
+// func NewCountWorker() *countWorker {
 func NewCountWorker() cueball.Worker {
 	sw := new(countWorker)
 	var ss []cueball.Method
@@ -21,14 +22,14 @@ func NewCountWorker() cueball.Worker {
 	return sw
 }
 
-func (s *countWorker) Name() string {
+func (w *countWorker) Name() string {
 	return "count-worker"
 }
 
-func (s *countWorker) Inc(ctx context.Context) error {
-	s.Cnt += 10
-	if s.Cnt >= 100 {
-		cueball.Lc(ctx).Debug().Int("value", s.Cnt).Msg("at or over 100")
+func (w *countWorker) Inc(ctx context.Context, s cueball.State) error {
+	w.Cnt += 10
+	if w.Cnt >= 100 {
+		cueball.Lc(ctx).Debug().Interface("W", w).Msg("at or over 100")
 	}
 	return nil
 }
