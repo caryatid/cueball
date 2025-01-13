@@ -29,9 +29,9 @@ func Gen(name string) Worker {
 	return w_.(WorkerGen)()
 }
 
-func Workers() (ws []Worker) {
+func Workers() (ws []string) {
 	wgens.Range(func(n, _ any) bool {
-		ws = append(ws, Gen(n.(string)))
+		ws = append(ws, n.(string))
 		return true
 	})
 	return

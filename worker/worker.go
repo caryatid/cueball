@@ -50,22 +50,22 @@ func (e *defaultExecutor) GetDefer() time.Time {
 	return e.current().Attempt.Defer()
 }
 
-func (e *defaultExecutor) Do(ctx context.Context) error {
-	s := e.current()
-	if s.Complete { // TODO how to handle per step done-ness
-		return s.Error
+func (e *defaultExecutor) Do(ctx context.Context, s cueball.State) error {
+	st := e.current()
+	if st.Complete {
+		return st.Error
 	}
-	s.Error = nil // TODO clobbers previous error.
-	err := s.Attempt.Do(ctx)
+	st.Error = nil // NOTE clobbers previous error.
+	err := st.Attempt.Do(ctx, s)
 	if err != nil {
-		s.Error = cueball.NewError(err)
-		if !s.Attempt.Again() {
-			s.Success = false // explicit but should not be necessary
+		st.Error = cueball.NewError(err)
+		if !st.Attempt.Again() {
+			st.Success = false // explicit but should not be necessary
 			e.StatusI = cueball.FAIL
 		}
 	} else {
-		s.Success = true
-		s.Complete = true
+		st.Success = true
+		st.Complete = true
 	}
 	if e.Done() {
 		e.StatusI = cueball.DONE
