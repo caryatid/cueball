@@ -15,7 +15,6 @@ import (
 	"context"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-//	"golang.org/x/sync/errgroup"
 	"io"
 	"time"
 )
@@ -29,7 +28,7 @@ var (
 )
 
 // All methods used for stages must be of this signature
-type Method func(context.Context) error
+type Method func(context.Context, State) error
 
 // Function that generates new works of a given type. Used to register
 // workers w/ the [State] implementations
@@ -53,7 +52,7 @@ type Executor interface {
 	ID() uuid.UUID            // returns the worker's unique ID (per workload)
 	Status() Status           // Gets worker status
 	SetStatus(Status)         // Set's worker status
-	Do(context.Context) error // Calls into the current step's retry
+	Do(context.Context, State) error // Calls into the current step's retry
 	GetDefer() time.Time      // calls the current steps defer
 	Done() bool               // indicates, regardless of success or failure, the worker is done
 }
@@ -62,7 +61,7 @@ type Executor interface {
 // Simple counter and backoff examples are provided.
 type Retry interface {
 	Again() bool
-	Do(context.Context) error
+	Do(context.Context, State) error
 	Defer() time.Time
 }
 
@@ -71,18 +70,18 @@ type State interface {
 	Log
 	Blob
 	Start(context.Context)
-	Wait(context.Context, []Worker) error
+	Wait(context.Context, time.Duration, []uuid.UUID) error
 }
 
 type Log interface {
-	Store(context.Context, <-chan Worker) error
-	Scan(context.Context, chan<- Worker) error
+	Store(context.Context, chan Worker) error
+	Scan(context.Context, chan Worker) error
 	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
 }
 
 type Pipe interface {
-	Enqueue(context.Context, <-chan Worker) error
-	Dequeue(context.Context, chan<- Worker) error
+	Enqueue(context.Context, chan Worker) error
+	Dequeue(context.Context, chan Worker) error
 }
 
 type Blob interface {

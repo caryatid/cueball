@@ -29,22 +29,22 @@ func NewStageWorker() *stageWorker {
 	return sw
 }
 
-func (s *stageWorker) Stage1(ctx context.Context) error {
-	s.Number = rand.Int() % 10
-	s.Printer(ctx)
+func (w *stageWorker) Stage1(ctx context.Context, s cueball.State) error {
+	w.Number = rand.Int() % 10
+	w.Printer(ctx)
 	return nil
 }
 
-func (s *stageWorker) Stage2(ctx context.Context) error {
-	s.Printer(ctx)
-	if s.Number < 4 {
-		s.Number = rand.Int() % 10
+func (w *stageWorker) Stage2(ctx context.Context, s cueball.State) error {
+	w.Printer(ctx)
+	if w.Number < 4 {
+		w.Number = rand.Int() % 10
 		return fmt.Errorf("an error")
 	}
 	return nil
 }
 
-func (s *stageWorker) Stage3(ctx context.Context) error {
-	s.Printer(ctx)
+func (w *stageWorker) Stage3(ctx context.Context, s cueball.State) error {
+	w.Printer(ctx)
 	return nil
 }

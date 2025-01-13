@@ -1,11 +1,11 @@
-// Package cueball/state
-
+// Package state manages, you guessed it, state.
 package state
 
 import (
 	"context"
 	"github.com/caryatid/cueball"
 	"golang.org/x/sync/errgroup"
+	"github.com/google/uuid"
 	"time"
 )
 
@@ -26,6 +26,7 @@ func NewState(ctx context.Context, p cueball.Pipe, l cueball.Log,
 	return s, ctx
 }
 
+
 func (s *defState)run(ctx context.Context, f cueball.RunFunc) chan cueball.Worker {
 	ch := make(chan cueball.Worker)
 	s.g.Go(func () error {
@@ -40,7 +41,7 @@ func (s *defState) Start(ctx context.Context) {
 	store := s.run(ctx, s.Store)
 	s.g.Go(func() error {
 		for {
-			for w := range s.Run(ctx, s.Scan) {
+			for w := range s.run(ctx, s.Scan) {
 				w.SetStatus(cueball.INFLIGHT)
 				store <- w
 				enq <- w
@@ -51,7 +52,7 @@ func (s *defState) Start(ctx context.Context) {
 	s.g.Go(func() error {
 		for {
 			w := <- deq
-			w.Do(ctx) // error handled inside
+			w.Do(ctx, s) // error handled inside
 			if !w.Done() {
 				if cueball.DirectEnqueue {
 					enq <- w
@@ -67,7 +68,7 @@ func (s *defState) Start(ctx context.Context) {
 }
 
 func (s *defState)Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID) error {
-	t := time.NewTicker(wait)
+	tick := time.NewTicker(wait)
 	for {
 		select {
 		case <-ctx.Done():
@@ -89,7 +90,7 @@ func (s *defState)Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID)
 				c := make(chan error)
 				go func() {
 					defer close(c)
-					c <- s.Group().Wait()
+					c <- s.g.Wait()
 				}()
 				select {
 				case err, _ := <-c: // TODO handle ok
@@ -100,4 +101,8 @@ func (s *defState)Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID)
 			}
 		}
 	}
+}
+
+func (s *defState)Close() error { 
+	return nil
 }

@@ -73,7 +73,7 @@ func fnameUnpack(fname string) (*metaData, error) {
 	return &metaData{time.Unix(0, now), time.Unix(0, until), *st, s[3]}, nil
 }
 
-func (l *fsys) Store(ctx context.Context, ch <-chan cueball.Worker) error {
+func (l *fsys) Store(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range ch {
 		dname := l.dir + "/" + w.ID().String()
 		if err := mkdir(dname); err != nil {
@@ -95,7 +95,7 @@ func (l *fsys) Store(ctx context.Context, ch <-chan cueball.Worker) error {
 	return nil
 }
 
-func (l *fsys) Scan(ctx context.Context, ch chan<- cueball.Worker) error {
+func (l *fsys) Scan(ctx context.Context, ch chan cueball.Worker) error {
 	m, err := l.filemap()
 	if err != nil {
 		fmt.Errorf("ohh, %w", err)

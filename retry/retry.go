@@ -19,9 +19,9 @@ func NewCount(max int, fs ...cueball.Method) (rs []cueball.Retry) {
 	return
 }
 
-func (c *count) Do(ctx context.Context) error {
+func (c *count) Do(ctx context.Context, s cueball.State) error {
 	c.Tries++
-	return c.f(ctx)
+	return c.f(ctx, s)
 }
 
 func (c *count) Again() bool {
@@ -44,10 +44,10 @@ func NewBackoff(max int, start_window time.Duration, fs ...cueball.Method) (rs [
 	return
 }
 
-func (b *backoff) Do(ctx context.Context) error {
+func (b *backoff) Do(ctx context.Context, s cueball.State) error {
 	b.Window = b.Window + (b.Window * time.Duration(b.Tries))
 	b.Tries++
-	return b.f(ctx)
+	return b.f(ctx, s)
 }
 
 func (b *backoff) Defer() time.Time {

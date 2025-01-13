@@ -63,7 +63,7 @@ func NewFifo(ctx context.Context, name, dir string) (cueball.Pipe, error) {
 	return p, nil
 }
 
-func (p *fifo) Enqueue(ctx context.Context, ch <-chan cueball.Worker) error {
+func (p *fifo) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range ch {
 		data, err := marshal(w)
 		if err != nil {
@@ -81,7 +81,7 @@ func (p *fifo) Enqueue(ctx context.Context, ch <-chan cueball.Worker) error {
 	return nil
 }
 
-func (p *fifo) Dequeue(ctx context.Context, ch chan<- cueball.Worker) error {
+func (p *fifo) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 	defer close(ch)
 	for {
 		data, err := bufio.NewReader(p.out).ReadString('\n')

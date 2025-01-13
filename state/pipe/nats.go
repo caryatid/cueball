@@ -31,7 +31,7 @@ func NewNats(ctx context.Context, g *errgroup.Group,
 	return p, err
 }
 
-func (p *natsp) Enqueue(ctx context.Context, ch <-chan cueball.Worker) error {
+func (p *natsp) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range ch {
 		data, err := json.Marshal(w)
 		if err != nil {
@@ -45,7 +45,7 @@ func (p *natsp) Enqueue(ctx context.Context, ch <-chan cueball.Worker) error {
 }
 
 func (p *natsp) subread(ctx context.Context, name string,
-				ch chan<- cueball.Worker) error {
+				ch chan cueball.Worker) error {
 	subname := prefix + name
 	sub, err := p.Nats.QueueSubscribeSync(subname, subname)
 	if err != nil {
@@ -68,7 +68,7 @@ func (p *natsp) subread(ctx context.Context, name string,
 	return nil
 }
 
-func (p *natsp) workerscan(ctx context.Context, ch chan<- cueball.Worker) {
+func (p *natsp) workerscan(ctx context.Context, ch chan cueball.Worker) {
 	for _, name := range cueball.Workers() {
 		sub_, ok := p.sub.Load(name)
 		if !ok || !sub_.(*nats.Subscription).IsValid() {
@@ -81,7 +81,7 @@ func (p *natsp) workerscan(ctx context.Context, ch chan<- cueball.Worker) {
 	}
 }
 
-func (p *natsp) Dequeue(ctx context.Context, ch chan<- cueball.Worker) error {
+func (p *natsp) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 	defer close(ch)
 	t := time.NewTicker(time.Millisecond * 150)
 	p.workerscan(ctx, ch)

@@ -57,7 +57,7 @@ func NewPG(ctx context.Context, dburl string) (cueball.Log, error) {
 	return l, err
 }
 
-func (l *pg) Store(ctx context.Context, ch <-chan cueball.Worker) error {
+func (l *pg) Store(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range ch {
 		b, err := json.Marshal(w)
 		if err != nil {
@@ -69,7 +69,7 @@ func (l *pg) Store(ctx context.Context, ch <-chan cueball.Worker) error {
 	return nil
 }
 
-func (l *pg) Scan(ctx context.Context, ch chan<- cueball.Worker) error {
+func (l *pg) Scan(ctx context.Context, ch chan cueball.Worker) error {
 	var wname string
 	var data []byte
 	rows, err := l.DB.Query(ctx, loadworkfmt)

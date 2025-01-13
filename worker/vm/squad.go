@@ -2,10 +2,9 @@ package vm
 
 import (
 	"context"
-	"fmt"
 	"github.com/caryatid/cueball"
 	"github.com/caryatid/cueball/worker"
-	"text/template"
+//	"text/template"
 	"github.com/caryatid/cueball/retry"
 	"net"
 	"net/url"
@@ -127,7 +126,6 @@ ${9pargs}  -display none"
 
 type vmWorker struct {
 	cueball.Executor
-	Name string
 	Port int
 	RePull bool
 	Wan  net.Interface
@@ -151,15 +149,16 @@ func NewVmWorker() *vmWorker { // concrete type permits field setting
 	return w
 }
 
-func (w *vmWorker) pullBinaries(ctx context.Context, o cueball.ObjectStore) error {
+func (w *vmWorker) pullBinaries(ctx context.Context, s cueball.State) error {
 	for _, u := range binaries {
-		if ! w.Exists(w.key(u)) || w.RePull {
+		// if ! w.Exists(w.key(u)) || w.RePull {
+		if  w.RePull {
 			resp, err := http.Get(w.AlpineMirror.JoinPath(w.AlpineBranch,
 				"releases", w.AlpineArch, "netboot", u).String())
 			if err != nil {
 				return err
 			}
-			o.Save(w.key(u), resp.Body)
+			s.Save(w.key(u), resp.Body)
 		}
 	}
 	return nil
