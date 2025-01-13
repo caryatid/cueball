@@ -1,4 +1,4 @@
-package state
+package pipe
 
 import (
 	"encoding/base64"

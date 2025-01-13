@@ -15,7 +15,7 @@ import (
 	"context"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
+//	"golang.org/x/sync/errgroup"
 	"io"
 	"time"
 )
@@ -34,6 +34,7 @@ type Method func(context.Context) error
 // Function that generates new works of a given type. Used to register
 // workers w/ the [State] implementations
 type WorkerGen func() Worker
+type RunFunc func(ctx context.Context, ch chan Worker) error
 
 // Worker is the interface that must be defined by clients of this library
 // Worker structs will, generally, simply use the DefaultExecuter to register
@@ -65,31 +66,27 @@ type Retry interface {
 	Defer() time.Time
 }
 
-// State interface provides the persistence and queuing layer.
-// A few implementations are provided. Most real systems will
-// simply use the [state/pg] or [state/nats] implementations.
 type State interface {
-	WorkerSet
-	ObjectStore
-	io.Closer
+	Pipe
+	Log
+	Blob
 	Start(context.Context)
 	Wait(context.Context, []Worker) error
-	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
-	Persist(context.Context, Worker) error          // does the persistence of a worker
-	Enqueue(context.Context, Worker) error          // Enqueues for processing (for work)
-	LoadWork(context.Context) error                 // Scans the persistent state for workers that should be enqueued
 }
 
-type ObjectStore interface {
+type Log interface {
+	Store(context.Context, <-chan Worker) error
+	Scan(context.Context, chan<- Worker) error
+	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
+}
+
+type Pipe interface {
+	Enqueue(context.Context, <-chan Worker) error
+	Dequeue(context.Context, chan<- Worker) error
+}
+
+type Blob interface {
 	Save(string, io.Reader) error
 	Load(string) (io.Reader, error)
 }
 
-// WorkerSet provides the needful for generating, by name, concrete types
-// with [Worker] interface definitions. Like [Executor] this is an interface
-// for embedding in [State] and not intended to have multiple implementations.
-type WorkerSet interface {
-	Work() chan Worker
-	Store() chan Worker
-	Group() *errgroup.Group
-}

@@ -5,44 +5,69 @@ package state
 import (
 	"context"
 	"github.com/caryatid/cueball"
+	"golang.org/x/sync/errgroup"
 	"time"
 )
 
-func Start(ctx context.Context, s cueball.State, tick *time.Ticker) {
-	s.Group().Go(func() error {
+type defState struct {
+	cueball.Pipe
+	cueball.Log
+	cueball.Blob
+	g *errgroup.Group
+}
+
+func NewState(ctx context.Context, p cueball.Pipe, l cueball.Log,
+		b cueball.Blob) (cueball.State, context.Context) {
+	s := new(defState)
+	s.Pipe = p
+	s.Log = l
+	s.Blob = b
+	s.g, ctx = errgroup.WithContext(ctx)
+	return s, ctx
+}
+
+func (s *defState)run(ctx context.Context, f cueball.RunFunc) chan cueball.Worker {
+	ch := make(chan cueball.Worker)
+	s.g.Go(func () error {
+		return f(ctx, ch)
+	})
+	return ch
+}
+
+func (s *defState) Start(ctx context.Context) {
+	enq := s.run(ctx, s.Enqueue)
+	deq := s.run(ctx, s.Dequeue)
+	store := s.run(ctx, s.Store)
+	s.g.Go(func() error {
 		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-tick.C:
-				s.Group().Go(func() error {
-					return s.LoadWork(ctx)
-				})
-			case w := <-s.Store():
-				if err := s.Persist(ctx, w); err != nil {
-					return err
-				}
-			case w := <-s.Work():
-				s.Group().Go(func() error {
-					w.Do(ctx) // error handled inside
-					if !w.Done() {
-						if cueball.DirectEnqueue {
-							s.Enqueue(ctx, w)
-						} else {
-							w.SetStatus(cueball.ENQUEUE)
-						}
-					}
-					s.Store() <- w
-					return nil
-				})
+			for w := range s.Run(ctx, s.Scan) {
+				w.SetStatus(cueball.INFLIGHT)
+				store <- w
+				enq <- w
 			}
 		}
+		return nil
+	})
+	s.g.Go(func() error {
+		for {
+			w := <- deq
+			w.Do(ctx) // error handled inside
+			if !w.Done() {
+				if cueball.DirectEnqueue {
+					enq <- w
+				} else {
+					w.SetStatus(cueball.ENQUEUE)
+				}
+			}
+			store <- w
+		}
+		return nil
 	})
 	return
 }
 
-func Wait(ctx context.Context, s cueball.State,
-	tick *time.Ticker, ws []cueball.Worker) error {
+func (s *defState)Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID) error {
+	t := time.NewTicker(wait)
 	for {
 		select {
 		case <-ctx.Done():
@@ -50,8 +75,8 @@ func Wait(ctx context.Context, s cueball.State,
 			return nil
 		case <-tick.C:
 			gtg := true
-			for _, w_ := range ws {
-				w, err := s.Get(ctx, w_.ID())
+			for _, id := range ids {
+				w, err := s.Get(ctx, id)
 				if err != nil || w == nil {
 					continue
 				}
