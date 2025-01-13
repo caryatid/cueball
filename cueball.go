@@ -70,6 +70,7 @@ type Retry interface {
 // simply use the [state/pg] or [state/nats] implementations.
 type State interface {
 	WorkerSet
+	ObjectStore
 	io.Closer
 	Start(context.Context)
 	Wait(context.Context, []Worker) error
@@ -77,6 +78,11 @@ type State interface {
 	Persist(context.Context, Worker) error          // does the persistence of a worker
 	Enqueue(context.Context, Worker) error          // Enqueues for processing (for work)
 	LoadWork(context.Context) error                 // Scans the persistent state for workers that should be enqueued
+}
+
+type ObjectStore interface {
+	Save(string, io.Reader) error
+	Load(string) (io.Reader, error)
 }
 
 // WorkerSet provides the needful for generating, by name, concrete types

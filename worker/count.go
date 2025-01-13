@@ -11,7 +11,7 @@ type countWorker struct {
 	Cnt int
 }
 
-func NewCountWorker() cueball.Worker {
+func NewCountWorker() *countWorker {
 	sw := new(countWorker)
 	var ss []cueball.Method
 	for i := 0; i < 10; i++ {

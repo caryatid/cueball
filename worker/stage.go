@@ -23,7 +23,7 @@ func (s *stageWorker) Printer(ctx context.Context) {
 	// log.Debug().Interface("worker", s).Msg("from stage worker")
 }
 
-func NewStageWorker() cueball.Worker {
+func NewStageWorker() *stageWorker {
 	sw := new(stageWorker)
 	sw.Executor = NewExecutor(retry.NewCount(3, sw.Stage1, sw.Stage2, sw.Stage3)...)
 	return sw
