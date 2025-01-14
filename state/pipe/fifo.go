@@ -11,13 +11,15 @@ import (
 	"os"
 	"sync"
 	"syscall"
+	"time"
 )
 
 var pre = ".cue"
 var sep = ":"
 
 type fifo struct {
-	sync.Mutex
+	wl  sync.Mutex
+	rl  sync.Mutex
 	in  *os.File
 	out *os.File
 	dir string
@@ -66,6 +68,7 @@ func NewFifo(ctx context.Context, name, dir string) (cueball.Pipe, error) {
 
 func (p *fifo) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range ch {
+		time.Sleep(time.Millisecond * 5)
 		data, err := state.Marshal(w)
 		if err != nil {
 			return err
@@ -75,7 +78,12 @@ func (p *fifo) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 		if err != nil {
 			return err
 		}
-		if _, err = p.in.Write(append(wdata, '\n')); err != nil {
+		if err := func() error {
+			p.wl.Lock()
+			defer p.wl.Unlock()
+			_, err := p.in.Write(append(wdata, '\n'))
+			return err
+		}(); err != nil {
 			return err
 		}
 	}
@@ -85,7 +93,11 @@ func (p *fifo) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 func (p *fifo) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 	defer close(ch)
 	for {
-		data, err := bufio.NewReader(p.out).ReadString('\n')
+		data, err := func() (string, error) {
+			p.rl.Lock()
+			defer p.rl.Unlock()
+			return bufio.NewReader(p.out).ReadString('\n')
+		}()
 		if err != nil {
 			return err
 		}

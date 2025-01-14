@@ -17,10 +17,12 @@ func TestWorkers(t *testing.T) {
 		t.Run(tname, func(t *testing.T) {
 			enq := s.Start(ctx)
 			var checks []uuid.UUID
-			for _, wname := range cueball.Workers() {
-				w := cueball.Gen(wname)
-				enq <- w
-				checks = append(checks, w.ID())
+			for i := 0; i < 4; i++ {
+				for _, wname := range cueball.Workers() {
+					w := cueball.Gen(wname)
+					enq <- w
+					checks = append(checks, w.ID())
+				}
 			}
 			h.A.NoError(s.Wait(ctx, time.Millisecond*140, checks))
 		})
