@@ -25,6 +25,9 @@ func (p *mem) emulateSerialize(src, target cueball.Worker) error {
 
 func (p *mem) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range ch {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		p.queue <- w
 	}
 	return nil
@@ -35,6 +38,9 @@ func (p *mem) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range p.queue {
 		w_ := cueball.Gen(w.Name())
 		p.emulateSerialize(w, w_)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		ch <- w_
 	}
 	return nil

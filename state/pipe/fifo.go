@@ -68,6 +68,9 @@ func NewFifo(ctx context.Context, name, dir string) (cueball.Pipe, error) {
 
 func (p *fifo) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range ch {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		time.Sleep(time.Millisecond * 5)
 		data, err := state.Marshal(w)
 		if err != nil {
@@ -109,8 +112,10 @@ func (p *fifo) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 		if err := state.Unmarshal(pk.Codec, w); err != nil {
 			return err
 		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		ch <- w
 	}
 	return nil
 }
-

@@ -32,6 +32,9 @@ func NewNats(ctx context.Context, natsurl string) (cueball.Pipe, error) {
 
 func (p *natsp) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 	for w := range ch {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		data, err := json.Marshal(w)
 		if err != nil {
 			return err

@@ -3,24 +3,22 @@ package test
 import (
 	"context"
 	"github.com/caryatid/cueball"
-	"github.com/caryatid/cueball/state"
-	"github.com/caryatid/cueball/state/blob"
-	"github.com/caryatid/cueball/state/log"
-	"github.com/caryatid/cueball/state/pipe"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sync/errgroup"
 	"os"
 	"testing"
 	"time"
 )
 
-var dbconn = "postgresql://postgres:postgres@localhost:5432"
-var natsconn = "nats://localhost:4222"
+var Dbconn = "postgresql://postgres:postgres@localhost:5432"
+var Natsconn = "nats://localhost:4222"
 
 type harness struct {
 	L *zerolog.Logger
 	A *assert.Assertions
 	C context.CancelFunc
+	G *errgroup.Group
 }
 
 func TSetup(t *testing.T) (h *harness, ctx context.Context) {
@@ -28,48 +26,42 @@ func TSetup(t *testing.T) (h *harness, ctx context.Context) {
 	h = new(harness)
 	ctx, h.C = context.WithDeadline(context.Background(),
 		time.Now().Add(time.Second*23))
+	h.G, ctx = errgroup.WithContext(ctx)
 	ctx = l.WithContext(ctx)
 	h.L = zerolog.Ctx(ctx)
 	h.A = assert.New(t)
 	return h, ctx
 }
 
-func AllThree(ctx context.Context, t *testing.T) map[string]cueball.State {
-	m := make(map[string]cueball.State)
-	pm := make(map[string]func() cueball.Pipe)
-	lm := make(map[string]func() cueball.Log)
-	pm["fifo"] = func() cueball.Pipe {
-		p, _ := pipe.NewFifo(ctx, "test.fifo", "testdir")
-		return p
-	}
-	pm["mem"] = func() cueball.Pipe {
-		p, _ := pipe.NewMem(ctx)
-		return p
-	}
-	pm["nats"] = func() cueball.Pipe {
-		p, _ := pipe.NewNats(ctx, natsconn)
-		return p
-	}
-	lm["fsys"] = func() cueball.Log {
-		l, _ := log.NewFsys(ctx, "testdir")
-		return l
-	}
-	lm["pg"] = func() cueball.Log {
-		l, _ := log.NewPG(ctx, dbconn)
-		return l
-	}
-	lm["mem"] = func() cueball.Log {
-		l, _ := log.NewMem(ctx)
-		return l
-	}
-	for _, ln := range []string{"fsys", "pg", "mem"} {
-		for _, pn := range []string{"nats", "fifo", "mem"} {
-			for _, bn := range []string{"mem"} {
-				b, _ := blob.NewMem(ctx)
-				m[ln+"."+pn+"."+bn], _ =
-					state.NewState(ctx, pm[pn](), lm[ln](), b)
+func (h *harness) TestPipe(ctx context.Context, s cueball.State) error {
+	enq := s.Run(ctx, s.Enqueue)
+	deq := s.Run(ctx, s.Dequeue)
+	cueball.RegGen(NewTestWorker)
+	done := make(chan struct{})
+	h.G.Go(func() error {
+		defer close(done)
+		for i := 0; i < 10; i++ {
+			for _, wn := range cueball.Workers() {
+				w := cueball.Gen(wn)
+				enq <- w
 			}
 		}
-	}
-	return m
+		return nil
+
+	})
+	h.G.Go(func() error {
+		for w := range deq {
+			for i := 0; i < 2; i++ {
+				err := w.Do(ctx, s)
+				if err != nil {
+					return err
+				}
+				cueball.Lc(ctx).Debug().Interface("lame", w).Send()
+			}
+		}
+		return nil
+	})
+	<-done
+	h.C()
+	return h.G.Wait()
 }

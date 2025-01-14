@@ -28,7 +28,7 @@ func NewState(ctx context.Context, p cueball.Pipe, l cueball.Log,
 	return s, ctx
 }
 
-func (s *defState) run(ctx context.Context, f cueball.RunFunc) chan cueball.Worker {
+func (s *defState) Run(ctx context.Context, f cueball.RunFunc) chan cueball.Worker {
 	ch := make(chan cueball.Worker)
 	s.g.Go(func() error {
 		return f(ctx, ch)
@@ -37,12 +37,12 @@ func (s *defState) run(ctx context.Context, f cueball.RunFunc) chan cueball.Work
 }
 
 func (s *defState) Start(ctx context.Context) chan cueball.Worker {
-	enq := s.run(ctx, s.Enqueue)
-	deq := s.run(ctx, s.Dequeue)
-	store := s.run(ctx, s.Store)
+	enq := s.Run(ctx, s.Enqueue)
+	deq := s.Run(ctx, s.Dequeue)
+	store := s.Run(ctx, s.Store)
 	s.g.Go(func() error {
 		for {
-			for w := range s.run(ctx, s.Scan) {
+			for w := range s.Run(ctx, s.Scan) {
 				enq <- w
 			}
 		}

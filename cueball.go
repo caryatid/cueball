@@ -71,6 +71,7 @@ type State interface {
 	Blob
 	Start(context.Context) chan Worker
 	Wait(context.Context, time.Duration, []uuid.UUID) error
+	Run(context.Context, RunFunc) chan Worker
 }
 
 type Log interface {
