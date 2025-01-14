@@ -28,7 +28,7 @@ type fifo struct {
 func NewFifo(ctx context.Context, name, dir string) (cueball.Pipe, error) {
 	var err error
 	p := new(fifo)
-	if err = mkdir(dir); err != nil {
+	if err = os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
 	p.dir = dir
@@ -114,10 +114,3 @@ func (p *fifo) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 	return nil
 }
 
-// TODO generalize
-func mkdir(path string) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return os.Mkdir(path, os.ModeDir|0755)
-	}
-	return nil
-}
