@@ -53,7 +53,7 @@ func TestPipe(t *testing.T) {
 			}
 		}
 		t.Run(tname, func(t *testing.T) {
-			s, _ := state.NewState(ctx, p, nil, nil)
+			s, ctx := state.NewState(ctx, p, nil, nil)
 			assert.NoError(test.Pipe(ctx, s, x...))
 		})
 	}
