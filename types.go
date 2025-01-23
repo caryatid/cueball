@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"github.com/rs/zerolog"
 	"strings"
 	"sync"
 )
@@ -13,20 +14,21 @@ var (
 	EnumError = errors.New("invalid enum value")
 	EndError  = errors.New("iteration complete")
 	wgens     sync.Map
+	Lc        = zerolog.Ctx // import saver; kinda dumb
 )
 
-func RegGen(gens ...WorkerGen) {
-	for _, gen := range gens {
-		wgens.Store(gen().Name(), gen)
+func RegWorker(fs ...WorkerGen) {
+	for _, f := range fs {
+		wgens.Store(f().Name(), f)
 	}
 }
 
-func Gen(name string) Worker {
-	w_, ok := wgens.Load(name)
+func GenWorker(name string) Worker {
+	w, ok := wgens.Load(name)
 	if !ok {
-		return nil // TODO
+		return nil
 	}
-	return w_.(WorkerGen)()
+	return w.(WorkerGen)()
 }
 
 func Workers() (ws []string) {

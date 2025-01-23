@@ -28,6 +28,10 @@ func (c *count) Again() bool {
 	return c.Tries < c.Max
 }
 
+func (c *count) Name() string {
+	return "count"
+}
+
 func (c *count) Defer() time.Time {
 	return time.Now().Add(-time.Millisecond) // always be less
 }
@@ -53,4 +57,8 @@ func (b *backoff) Do(ctx context.Context, s cueball.State) error {
 func (b *backoff) Defer() time.Time {
 	t := time.Now().Add(b.Window)
 	return t
+}
+
+func (b *backoff) Name() string {
+	return "backoff"
 }

@@ -12,13 +12,11 @@ import (
 var queue_size = 10 // TODO
 
 type mem struct {
-	ids   sync.Map
-	store chan cueball.Worker
+	ids sync.Map
 }
 
-func NewMem(ctx context.Context) (cueball.Log, error) {
+func NewMem(ctx context.Context) (cueball.Record, error) {
 	l := new(mem)
-	l.store = make(chan cueball.Worker)
 	return l, nil
 }
 
@@ -36,25 +34,21 @@ func (l *mem) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	if !ok {
 		return nil, nil // TODO error
 	}
-	w := cueball.Gen(w__.Name())
+	w := cueball.GenWorker(w__.Name())
 	l.emulateSerialize(w__, w)
 	return w, nil
 }
 
-func (l *mem) Store(ctx context.Context, ch chan cueball.Worker) error {
-	for w := range ch {
-		l.ids.Store(w.ID().String(), w)
-	}
+func (l *mem) Store(ctx context.Context, w cueball.Worker) error {
+	l.ids.Store(w.ID().String(), w)
 	return nil
 }
 
-func (l *mem) Scan(ctx context.Context, ch chan cueball.Worker) error {
-	defer close(ch)
+func (l *mem) Scan(ctx context.Context, ch chan<- cueball.Worker) error {
 	l.ids.Range(func(k, w_ any) bool {
 		w, _ := w_.(cueball.Worker)
 		if w.Status() == cueball.ENQUEUE &&
 			w.GetDefer().Before(time.Now()) {
-			w.SetStatus(cueball.INFLIGHT)
 			ch <- w
 		}
 		return true

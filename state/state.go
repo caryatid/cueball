@@ -3,88 +3,81 @@ package state
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"github.com/caryatid/cueball"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
+	"sync"
 	"time"
 )
 
 type defState struct {
-	cueball.Pipe
-	cueball.Log
+	scmutex sync.Locker
 	cueball.Blob
-	g *errgroup.Group
+	p   cueball.Pipe
+	r   cueball.Record
+	g   *errgroup.Group
+	enq chan cueball.Worker
+	deq chan cueball.Worker
+	rec chan cueball.Worker
 }
 
-func NewState(ctx context.Context, p cueball.Pipe, l cueball.Log,
+func NewState(ctx context.Context, p cueball.Pipe, r cueball.Record,
 	b cueball.Blob) (cueball.State, context.Context) {
 	s := new(defState)
-	s.Pipe = p
-	s.Log = l
 	s.Blob = b
+	s.p = p
+	s.r = r
+	s.scmutex = new(sync.Mutex)
+	s.enq = make(chan cueball.Worker)
+	s.deq = make(chan cueball.Worker)
+	s.rec = make(chan cueball.Worker)
 	s.g, ctx = errgroup.WithContext(ctx)
+	s.g.Go(func() error { return rangeRun(ctx, s.deq, s.Work) })
+	if s.p != nil {
+		s.g.Go(func() error { return rangeRun(ctx, s.enq, s.p.Enqueue) })
+		s.g.Go(func() error { return tickRun(ctx, s.deq, nil, s.p.Dequeue) })
+	}
+	if s.r != nil {
+		s.g.Go(func() error { return rangeRun(ctx, s.rec, s.r.Store) })
+		s.g.Go(func() error { return tickRun(ctx, s.enq, s.scmutex, s.r.Scan) })
+	}
 	return s, ctx
 }
 
-func (s *defState) Run(ctx context.Context, f cueball.RunFunc) chan cueball.Worker {
-	ch := make(chan cueball.Worker)
-	s.g.Go(func() error {
-		return f(ctx, ch)
-	})
-	return ch
+func (s *defState) Work(ctx context.Context, w cueball.Worker) error {
+	w.Do(ctx, s) // error handled inside
+	if cueball.DirectEnqueue && !w.Done() {
+		s.enq <- w
+	}
+	s.rec <- w
+	return nil
 }
 
-func (s *defState) Start(ctx context.Context) chan cueball.Worker {
-	enq := s.Run(ctx, s.Enqueue)
-	deq := s.Run(ctx, s.Dequeue)
-	store := s.Run(ctx, s.Store)
-	s.g.Go(func() error {
-		for {
-			for w := range s.Run(ctx, s.Scan) {
-				enq <- w
-			}
-		}
-		return nil
-	})
-	s.g.Go(func() error {
-		for w := range deq {
-			w.Do(ctx, s) // error handled inside
-			if !w.Done() {
-				if cueball.DirectEnqueue {
-					enq <- w
-				} else {
-					w.SetStatus(cueball.ENQUEUE)
-				}
-			}
-			store <- w
-		}
-		return nil
-	})
-	return enq
+func (s *defState) Get(ctx context.Context, u uuid.UUID) (cueball.Worker, error) {
+	return s.r.Get(ctx, u)
 }
 
-func (s *defState) Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID) error {
+func (s *defState) Check(ctx context.Context, ids []uuid.UUID) bool {
+	for _, id := range ids {
+		w, err := s.Get(ctx, id)
+		if err != nil || w == nil { // FIX: timing issue sidestepped.
+			return false
+		}
+		if !w.Done() {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *defState) Wait(ctx context.Context, wait time.Duration, checks []uuid.UUID) error {
 	tick := time.NewTicker(wait)
 	for {
 		select {
 		case <-ctx.Done():
-			s.Close()
 			return nil
 		case <-tick.C:
-			gtg := true
-			for _, id := range ids {
-				w, err := s.Get(ctx, id)
-				if err != nil || w == nil {
-					continue
-				}
-				if !w.Done() {
-					gtg = false
-					break
-				}
-			}
-			if gtg {
+			if s.Check(ctx, checks) {
 				c := make(chan error)
 				go func() {
 					defer close(c)
@@ -93,7 +86,7 @@ func (s *defState) Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID
 				select {
 				case err, _ := <-c: // TODO handle ok
 					return err
-				case <-time.After(time.Millisecond * 750):
+				case <-time.After(wait * 3): // IDK
 				}
 				return nil
 			}
@@ -101,39 +94,68 @@ func (s *defState) Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID
 	}
 }
 
+func (s *defState) Enq() chan<- cueball.Worker {
+	return s.enq
+}
+
+func (s *defState) Deq() <-chan cueball.Worker {
+	return s.deq
+}
+
+func (s *defState) Rec() chan<- cueball.Worker {
+	return s.rec
+}
+
 func (s *defState) Close() error {
-	if s.Pipe != nil {
-		s.Pipe.Close()
-	}
-	if s.Log != nil {
-		s.Log.Close()
-	}
 	if s.Blob != nil {
 		//	s.Blob.Close()
+	}
+	if s.p != nil {
+		s.p.Close()
+	}
+	if s.r != nil {
+		s.r.Close()
 	}
 	return nil
 }
 
-// Pack facilitates multiplexing on an untyped queue
-type Pack struct {
-	Name  string
-	Codec string
+func rangeRun(ctx context.Context, ch <-chan cueball.Worker,
+	f cueball.WMethod) error {
+	for w := range ch {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err := f(ctx, w); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func Unmarshal(data string, w interface{}) error {
-	b, err := base64.StdEncoding.DecodeString(data)
-	if err != nil {
+func tickRun(ctx context.Context, ch chan<- cueball.Worker, l sync.Locker,
+	f cueball.WCMethod) error {
+	t := time.NewTicker(time.Millisecond * 5)
+	if err := lockRun(ctx, ch, l, f); err != nil {
 		return err
 	}
-	return json.Unmarshal(b, w)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+			if err := lockRun(ctx, ch, l, f); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-func Marshal(w interface{}) ([]byte, error) {
-	b, err := json.Marshal(w)
-	if err != nil {
-		return nil, err
+func lockRun(ctx context.Context, ch chan<- cueball.Worker, l sync.Locker,
+	f cueball.WCMethod) error {
+	if l != nil {
+		l.Lock()
+		defer l.Unlock()
 	}
-	data := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
-	base64.StdEncoding.Encode(data, b)
-	return data, nil
+	return f(ctx, ch)
 }

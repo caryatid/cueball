@@ -2,28 +2,35 @@ package pipe
 
 import (
 	"context"
-	"encoding/json"
+	//	"encoding/json"
 	"github.com/caryatid/cueball"
+	"github.com/caryatid/cueball/state"
 	"github.com/nats-io/nats.go"
 	"golang.org/x/sync/errgroup"
-	"sync"
-	"time"
 )
 
-// pub/sub key prefix for nats
-var prefix = "cueball.pg."
+// TODO think on this
+var subname = "cueball.worker"
 
 type natsp struct {
-	Nats *nats.Conn
-	sub  sync.Map
+	nats *nats.Conn
+	sub  *nats.Subscription
 	g    *errgroup.Group
+	msg  chan *nats.Msg
 }
 
 func NewNats(ctx context.Context, natsurl string) (cueball.Pipe, error) {
 	var err error
 	p := new(natsp)
 	p.g, ctx = errgroup.WithContext(ctx)
-	p.Nats, err = nats.Connect(natsurl)
+	p.nats, err = nats.Connect(natsurl)
+	if err != nil {
+		return nil, err
+	}
+	p.msg = make(chan *nats.Msg)
+	p.sub, err = p.nats.QueueSubscribe(subname, subname, func(m *nats.Msg) {
+		p.msg <- m
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -31,82 +38,34 @@ func NewNats(ctx context.Context, natsurl string) (cueball.Pipe, error) {
 }
 
 func (p *natsp) Close() error {
-	p.sub.Range(func(k, sub_ any) bool {
-		sub := sub_.(*nats.Subscription)
-		sub.Drain()
-		return true
-	})
-	p.Nats.Drain()
-	return nil
+	p.sub.Drain()
+	p.sub.Unsubscribe()
+	return p.nats.Drain()
 }
 
-func (p *natsp) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
-	for w := range ch {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		data, err := json.Marshal(w)
-		if err != nil {
-			return err
-		}
-		if err := p.Nats.Publish(prefix+w.Name(), data); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (p *natsp) subread(ctx context.Context, name string,
-	ch chan cueball.Worker) error {
-	subname := prefix + name
-	sub, err := p.Nats.QueueSubscribeSync(subname, subname)
+func (p *natsp) Enqueue(ctx context.Context, w cueball.Worker) error {
+	data, err := state.Marshal(w)
 	if err != nil {
 		return err
 	}
-	p.sub.Store(name, sub)
-	p.g.Go(func() error {
-		for {
-			msg, err := sub.NextMsgWithContext(ctx)
-			if err != nil {
-				return err
-			}
-			w := cueball.Gen(name)
-			if err := json.Unmarshal(msg.Data, w); err != nil {
-				return err
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			ch <- w
-		}
-	})
-	return nil
+	pk := &state.Pack{Name: w.Name(), Codec: string(data)}
+	wdata, err := state.Marshal(pk)
+	if err != nil {
+		return err
+	}
+	return p.nats.Publish(subname, wdata)
 }
 
-func (p *natsp) workerscan(ctx context.Context, ch chan cueball.Worker) {
-	for _, name := range cueball.Workers() {
-		sub_, ok := p.sub.Load(name)
-		if !ok || !sub_.(*nats.Subscription).IsValid() {
-			if ok {
-				sub_.(*nats.Subscription).Unsubscribe()
-				sub_.(*nats.Subscription).Drain()
-			}
-			p.subread(ctx, name, ch)
-		}
+func (p *natsp) Dequeue(ctx context.Context, ch chan<- cueball.Worker) error {
+	msg := <-p.msg
+	pk := new(state.Pack)
+	if err := state.Unmarshal(string(msg.Data), pk); err != nil {
+		return err
 	}
-}
-
-func (p *natsp) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
-	defer close(ch)
-	t := time.NewTicker(time.Millisecond * 150)
-	p.workerscan(ctx, ch)
-	for {
-		select {
-		case <-ctx.Done():
-			return p.g.Wait()
-		case <-t.C:
-			p.workerscan(ctx, ch)
-		}
+	w := cueball.GenWorker(pk.Name)
+	if err := state.Unmarshal(pk.Codec, w); err != nil {
+		return err
 	}
+	ch <- w
 	return nil
 }

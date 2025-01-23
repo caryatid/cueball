@@ -23,7 +23,8 @@ type nestData struct {
 
 func NewTestWorker() cueball.Worker {
 	sw := new(testWorker)
-	sw.Executor = NewExecutor(retry.NewCount(3, sw.Stage1, sw.Stage2)...)
+	sw.Executor = NewExecutor(retry.NewCount(3, sw.Stage1, sw.Stage2,
+		sw.Stage3)...)
 	return sw
 }
 
@@ -31,7 +32,6 @@ func (w *testWorker) Name() string {
 	return "test-worker"
 }
 
-// NOTE: do not use state so tests may have nil state args
 func (w *testWorker) Stage1(ctx context.Context, s cueball.State) error {
 	w.TestString = "one"
 	w.TestInt = 1
@@ -49,5 +49,15 @@ func (w *testWorker) Stage2(ctx context.Context, s cueball.State) error {
 	w.TestStruct = nestData{Name: "cloud", Class: "fighter"}
 	w.TestStructPt = &nestData{Name: "grue", Class: "monster"}
 	w.TestList = []string{"ccc", "ddd", "eee"}
+	return nil
+}
+
+func (w *testWorker) Stage3(ctx context.Context, s cueball.State) error {
+	w.TestString = "three"
+	w.TestInt = 3
+	w.TestFloat = 3.145
+	w.TestStruct = nestData{Name: "link", Class: "sword-and-board"}
+	w.TestStructPt = &nestData{Name: "ganon", Class: "end-boss"}
+	w.TestList = []string{"silver-arrow", "boomerang", "raft"}
 	return nil
 }

@@ -14,7 +14,6 @@ package cueball
 import (
 	"context"
 	"github.com/google/uuid"
-	"github.com/rs/zerolog"
 	"io"
 	"time"
 )
@@ -24,16 +23,14 @@ var (
 	WorkerCount   = 3
 	ChanSize      = 1
 	DirectEnqueue = false
-	Lc            = zerolog.Ctx // import saver; kinda dumb
 )
 
-// All methods used for stages must be of this signature
-type Method func(context.Context, State) error
-
-// Function that generates new works of a given type. Used to register
-// workers w/ the [State] implementations
 type WorkerGen func() Worker
-type RunFunc func(ctx context.Context, ch chan Worker) error
+
+// TODO change [Method] name
+type Method func(context.Context, State) error
+type WMethod func(context.Context, Worker) error
+type WCMethod func(context.Context, chan<- Worker) error
 
 // Worker is the interface that must be defined by clients of this library
 // Worker structs will, generally, simply use the DefaultExecuter to register
@@ -41,7 +38,7 @@ type RunFunc func(ctx context.Context, ch chan Worker) error
 // TODO link examples
 type Worker interface {
 	Executor
-	Name() string // Returns name for worker. Must be unique for a given worker group
+	Namer
 }
 
 // Executor provides the generalized methods to be used by all
@@ -57,37 +54,45 @@ type Executor interface {
 	Done() bool                      // indicates, regardless of success or failure, the worker is done
 }
 
+type Namer interface {
+	Name() string
+}
+
 // Retry provides an interface to allow different approaches.
 // Simple counter and backoff examples are provided.
 type Retry interface {
+	Namer
 	Again() bool
 	Do(context.Context, State) error
 	Defer() time.Time
 }
 
 type State interface {
-	Pipe
-	Log
 	Blob
-	Start(context.Context) chan Worker
+	Close() error
 	Wait(context.Context, time.Duration, []uuid.UUID) error
-	Run(context.Context, RunFunc) chan Worker
+	Check(context.Context, []uuid.UUID) bool
+	Enq() chan<- Worker
+	Deq() <-chan Worker
+	Rec() chan<- Worker
+	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
 }
 
-type Log interface {
+type Record interface {
 	Close() error
-	Store(context.Context, chan Worker) error
-	Scan(context.Context, chan Worker) error
+	Store(context.Context, Worker) error
+	Scan(context.Context, chan<- Worker) error
 	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
 }
 
 type Pipe interface {
 	Close() error
-	Enqueue(context.Context, chan Worker) error
-	Dequeue(context.Context, chan Worker) error
+	Enqueue(context.Context, Worker) error
+	Dequeue(context.Context, chan<- Worker) error
 }
 
 type Blob interface {
+	Close() error
 	Save(string, io.Reader) error
 	Load(string) (io.Reader, error)
 }

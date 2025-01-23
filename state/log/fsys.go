@@ -35,7 +35,7 @@ type metaData struct {
 	wname     string
 }
 
-func NewFsys(ctx context.Context, dir string) (cueball.Log, error) {
+func NewFsys(ctx context.Context, dir string) (cueball.Record, error) {
 	var err error
 	l := new(fsys)
 	if err = mkdir(dir); err != nil {
@@ -92,15 +92,11 @@ func (l *fsys) store(w cueball.Worker) error {
 	return err
 }
 
-func (l *fsys) Store(ctx context.Context, ch chan cueball.Worker) error {
-	for w := range ch {
-		l.store(w)
-	}
-	return nil
+func (l *fsys) Store(ctx context.Context, w cueball.Worker) error {
+	return l.store(w)
 }
 
-func (l *fsys) Scan(ctx context.Context, ch chan cueball.Worker) error {
-	defer close(ch)
+func (l *fsys) Scan(ctx context.Context, ch chan<- cueball.Worker) error {
 	m, err := l.filemap()
 	if err != nil {
 		fmt.Errorf("ohh, %w", err)
@@ -108,7 +104,6 @@ func (l *fsys) Scan(ctx context.Context, ch chan cueball.Worker) error {
 	}
 	for _, w := range m {
 		if w.Status() == cueball.ENQUEUE {
-			w.SetStatus(cueball.INFLIGHT)
 			l.store(w)
 			ch <- w
 		}
@@ -162,7 +157,7 @@ func (l *fsys) filemap() (map[string]cueball.Worker, error) {
 			return nil, err
 		}
 		fe, _ := fnameUnpack(f) // already done once; shouldn't error
-		w := cueball.Gen(fe.wname)
+		w := cueball.GenWorker(fe.wname)
 		err = state.Unmarshal(data, w)
 		fm[id.Name()] = w
 	}

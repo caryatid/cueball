@@ -20,7 +20,7 @@ INSERT INTO execution_log (id, stage, worker, data, until)
 VALUES($1, $2, $3, $4, $5);
 `
 
-var loadworkfmt = `
+var loadworkfmt__ = `
 WITH x AS (SELECT id, worker, data, until
 FROM execution_state WHERE stage = 'ENQUEUE' AND 
 (until IS NULL OR NOW() >= until))
@@ -30,11 +30,17 @@ FROM x
 RETURNING worker, data
 `
 
+var loadworkfmt = `
+SELECT worker, data
+FROM execution_state WHERE stage = 'ENQUEUE' AND 
+(until IS NULL OR NOW() >= until)
+`
+
 type pg struct {
 	DB *pgxpool.Pool
 }
 
-func NewPG(ctx context.Context, dburl string) (cueball.Log, error) {
+func NewPG(ctx context.Context, dburl string) (cueball.Record, error) {
 	var err error
 	l := new(pg)
 	config, err := pgxpool.ParseConfig(dburl)
@@ -61,25 +67,19 @@ func NewPG(ctx context.Context, dburl string) (cueball.Log, error) {
 	return l, err
 }
 
-func (l *pg) Store(ctx context.Context, ch chan cueball.Worker) error {
-	for w := range ch {
-		b, err := json.Marshal(w)
-		if err != nil {
-			return err
-		}
-		_, err = l.DB.Exec(ctx, persistfmt, w.ID().String(),
-			w.Status(), w.Name(), b, w.GetDefer())
-		if err != nil {
-			return err
-		}
+func (l *pg) Store(ctx context.Context, w cueball.Worker) error {
+	b, err := json.Marshal(w)
+	if err != nil {
+		return err
 	}
-	return nil
+	_, err = l.DB.Exec(ctx, persistfmt, w.ID().String(),
+		w.Status(), w.Name(), b, w.GetDefer())
+	return err
 }
 
-func (l *pg) Scan(ctx context.Context, ch chan cueball.Worker) error {
+func (l *pg) Scan(ctx context.Context, ch chan<- cueball.Worker) error {
 	var wname string
 	var data []byte
-	defer close(ch)
 	rows, err := l.DB.Query(ctx, loadworkfmt)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func (l *pg) Close() error {
 }
 
 func (l *pg) dum(wname string, data []byte) (cueball.Worker, error) { // data unmarshal
-	w := cueball.Gen(wname)
+	w := cueball.GenWorker(wname)
 	if err := json.Unmarshal([]byte(data), w); err != nil {
 		return nil, err
 	}
