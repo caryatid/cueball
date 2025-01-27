@@ -2,10 +2,13 @@ package cueball
 
 import (
 	"database/sql/driver"
+	"github.com/rs/zerolog"
 	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
+	"fmt"
+	"context"
 )
 
 // Internal Error definitions
@@ -13,20 +16,53 @@ var (
 	EnumError = errors.New("invalid enum value")
 	EndError  = errors.New("iteration complete")
 	wgens     sync.Map
+	pgens     sync.Map
+	lgens     sync.Map
+	bgens     sync.Map
+	Lc            = zerolog.Ctx // import saver; kinda dumb
 )
 
-func RegGen(gens ...WorkerGen) {
-	for _, gen := range gens {
-		wgens.Store(gen().Name(), gen)
+type StateComponent interface {
+	Pipe | Log | Blob | Worker
+}
+
+
+func RegisterComponent[C StateComponent](ctx context.Context, 
+		name string, f func (context.Context) C) {
+	switch f.(type) {
+	case PipeGen:
+		pgens.Store(name, f)
+	case LogGen:
+		lgens.Store(name, f)
+	case BlobGen:
+		bgens.Store(name, f)
+	case Worker:
+		bgens.Store(name, f)
 	}
 }
 
-func Gen(name string) Worker {
-	w_, ok := wgens.Load(name)
+func GenPipe(ctx context.Context, name string) cueball.Pipe {
+	p, ok := pgens.Load(name)
 	if !ok {
-		return nil // TODO
+		return nil
 	}
-	return w_.(WorkerGen)()
+	return p.(PipeGen)(ctx)
+}
+
+func GenLog(ctx context.Context, name string) cueball.Pipe {
+	l, ok := lgens.Load(name)
+	if !ok {
+		return nil
+	}
+	return l.(LogGen)(ctx)
+}
+
+func GenLog(ctx context.Context, name string) cueball.Pipe {
+	l, ok := lgens.Load(name)
+	if !ok {
+		return nil
+	}
+	return l.(LogGen)(ctx)
 }
 
 func Workers() (ws []string) {

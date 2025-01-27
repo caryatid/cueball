@@ -14,7 +14,6 @@ package cueball
 import (
 	"context"
 	"github.com/google/uuid"
-	"github.com/rs/zerolog"
 	"io"
 	"time"
 )
@@ -24,15 +23,16 @@ var (
 	WorkerCount   = 3
 	ChanSize      = 1
 	DirectEnqueue = false
-	Lc            = zerolog.Ctx // import saver; kinda dumb
 )
 
-// All methods used for stages must be of this signature
-type Method func(context.Context, State) error
 
-// Function that generates new works of a given type. Used to register
-// workers w/ the [State] implementations
-type WorkerGen func() Worker
+type WorkerGen func(context.Context) Worker
+type PipeGen func(context.Context) Pipe
+type LogGen func(context.Context) Log
+type BlobGen func(context.Context) Blob
+
+// TODO change [Method] name
+type Method func(context.Context, State) error
 type RunFunc func(ctx context.Context, ch chan Worker) error
 
 // Worker is the interface that must be defined by clients of this library
@@ -41,7 +41,7 @@ type RunFunc func(ctx context.Context, ch chan Worker) error
 // TODO link examples
 type Worker interface {
 	Executor
-	Name() string // Returns name for worker. Must be unique for a given worker group
+	Namer
 }
 
 // Executor provides the generalized methods to be used by all
@@ -57,9 +57,13 @@ type Executor interface {
 	Done() bool                      // indicates, regardless of success or failure, the worker is done
 }
 
+type Namer string {
+	Name () string
+}
 // Retry provides an interface to allow different approaches.
 // Simple counter and backoff examples are provided.
 type Retry interface {
+	Namer
 	Again() bool
 	Do(context.Context, State) error
 	Defer() time.Time
@@ -75,6 +79,7 @@ type State interface {
 }
 
 type Log interface {
+	Namer
 	Close() error
 	Store(context.Context, chan Worker) error
 	Scan(context.Context, chan Worker) error
@@ -82,12 +87,14 @@ type Log interface {
 }
 
 type Pipe interface {
+	Namer
 	Close() error
 	Enqueue(context.Context, chan Worker) error
 	Dequeue(context.Context, chan Worker) error
 }
 
 type Blob interface {
+	Namer
 	Save(string, io.Reader) error
 	Load(string) (io.Reader, error)
 }

@@ -11,8 +11,60 @@ import (
 	"time"
 )
 
-var Dbconn = "postgresql://postgres:postgres@localhost:5432"
-var Natsconn = "nats://localhost:4222"
+type pf func () cueball.Pipe
+type lf func () cueball.Log
+type bf func () cueball.Blob
+var (
+Dbconn = "postgresql://postgres:postgres@localhost:5432"
+Natsconn = "nats://localhost:4222"
+Pipes = map[string] pf {
+		"fifo": pf {
+			p, err := NewFifo(ctx, "test.fifo", dname)
+			if err != nil {
+				panic(err)
+			}
+			return p
+		},
+		"nats": pf {
+			p, err := NewNats(ctx, test.Natsconn)
+			if err != nil {
+				panic(err)
+			}
+			return p
+		},
+		"mem": pf {
+			p, err := NewMem(ctx)
+			if err != nil {
+				panic(err)
+			}
+			return p
+		},
+	}
+
+Logs = map[string]lf {
+		"fsys": lf {
+			l, err := NewFsys(ctx, dname)
+			if err != nil {
+				panic(err)
+			}
+			return l
+		},
+		"pg": lf {
+			l, err := NewPG(ctx, test.Dbconn)
+			if err != nil {
+				panic(err)
+			}
+			return l
+		},
+		"mem": lf {
+			l, err := NewMem(ctx)
+			if err != nil {
+				panic(err)
+			}
+			return l
+		},
+	}
+)
 
 func TSetup(t *testing.T) (*assert.Assertions, context.Context) {
 	ctx, _ := context.WithDeadline(context.Background(),
@@ -21,64 +73,5 @@ func TSetup(t *testing.T) (*assert.Assertions, context.Context) {
 	return assert.New(t), ctx
 }
 
-func Pipe(ctx context.Context, s cueball.State,
-	ws ...cueball.Worker) error {
-	ctx, c := context.WithCancel(ctx)
-	g, ctx := errgroup.WithContext(ctx)
-	enq := s.Run(ctx, s.Enqueue)
-	deq := s.Run(ctx, s.Dequeue)
-	g.Go(func() error {
-		defer func() {
-			time.Sleep(time.Millisecond * 100)
-			s.Close()
-			c()
-		}()
-		for _, w := range ws {
-			enq <- w
-		}
-		close(enq)
-		return nil
-	})
-	g.Go(func() error {
-		for w := range deq {
-			if err := doN(ctx, s, w, 2); err != nil {
-				return err
-			}
-			cueball.Lc(ctx).Debug().
-				Interface("worker", w).Msg("pipe-test")
-		}
-		return nil
-	})
-	return g.Wait()
-}
 
-func Log(ctx context.Context, s cueball.State,
-	ws ...cueball.Worker) error {
-	store := s.Run(ctx, s.Store)
-	scan := s.Run(ctx, s.Scan)
-	for _, w := range ws {
-		w.SetStatus(cueball.ENQUEUE)
-		store <- w
-	}
-	for w := range scan {
-		doN(ctx, s, w, 2)
-		store <- w
-		cueball.Lc(ctx).Debug().
-			Interface("worker", w).Msg("log-scan")
-	}
-	for _, w := range ws {
-		ww, _ := s.Get(ctx, w.ID())
-		cueball.Lc(ctx).Debug().
-			Interface("worker", ww).Msg("log-get")
-	}
-	return nil
-}
 
-func doN(ctx context.Context, s cueball.State, w cueball.Worker, cnt int) error {
-	for i := 0; i < cnt; i++ {
-		if err := w.Do(ctx, s); err != nil {
-			return err
-		}
-	}
-	return nil
-}

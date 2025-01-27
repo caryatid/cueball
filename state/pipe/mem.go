@@ -19,7 +19,7 @@ func NewMem(ctx context.Context) (cueball.Pipe, error) {
 }
 
 func (p *mem) Close() error {
-	close(p.queue)
+//	close(p.queue)
 	return nil
 }
 
@@ -35,6 +35,7 @@ func (p *mem) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 		}
 		p.queue <- w
 	}
+	close(p.queue)
 	return nil
 }
 

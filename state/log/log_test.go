@@ -45,7 +45,27 @@ func TestLog(t *testing.T) {
 		}
 		t.Run(tname, func(t *testing.T) {
 			s, _ := state.NewState(ctx, nil, l, nil)
-			assert.NoError(test.Log(ctx, s, x...))
+			assert.NoError(test.logRun(ctx, s, x...))
 		})
 	}
+}
+
+func logRun(ctx context.Context, s cueball.State,
+	ws ...cueball.Worker) error {
+	store := s.Run(ctx, s.Store)
+	var wids []uuid.UUID
+	for _, w := range ws {
+		wids = append(wids, w.ID())
+		w.SetStatus(cueball.ENQUEUE)
+		store <- w
+	}
+	g.Go(func () error {
+		for w := range s.Run(ctx, s.Scan) {
+			if err := w.Do(ctx, s); err != nil {
+				return err
+			}
+			store <- w
+		}
+	})
+	return s.Wait(ctx, time.Millisecond*250, wids)
 }
