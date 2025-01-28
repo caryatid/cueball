@@ -2,17 +2,15 @@ package example
 
 import (
 	"github.com/caryatid/cueball"
-	"github.com/caryatid/cueball/state/pipe"
-	"github.com/caryatid/cueball/state/log"
-	"github.com/caryatid/cueball/worker"
-	"github.com/caryatid/cueball/state"
 	"github.com/caryatid/cueball/internal/test"
+	"github.com/caryatid/cueball/state"
+	"github.com/caryatid/cueball/state/log"
+	"github.com/caryatid/cueball/state/pipe"
+	"github.com/caryatid/cueball/worker"
 	"github.com/google/uuid"
 	"testing"
 	"time"
 )
-
-	
 
 func TestWorker(t *testing.T) {
 	assert, ctx := test.TSetup(t)

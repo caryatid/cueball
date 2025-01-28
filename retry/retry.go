@@ -28,7 +28,7 @@ func (c *count) Again() bool {
 	return c.Tries < c.Max
 }
 
-func (c *count) Name () string {
+func (c *count) Name() string {
 	return "count"
 }
 
@@ -59,6 +59,6 @@ func (b *backoff) Defer() time.Time {
 	return t
 }
 
-func (b *backoff) Name () string {
+func (b *backoff) Name() string {
 	return "backoff"
 }

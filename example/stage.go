@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/caryatid/cueball"
-	"github.com/caryatid/cueball/worker"
 	"github.com/caryatid/cueball/retry"
+	"github.com/caryatid/cueball/worker"
 	"math/rand"
 )
 

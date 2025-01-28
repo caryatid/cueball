@@ -95,7 +95,7 @@ func (s *defState) Wait(ctx context.Context, wait time.Duration, checks []uuid.U
 				select {
 				case err, _ := <-c: // TODO handle ok
 					return err
-				case <-time.After(wait * 4): // IDK
+				case <-time.After(wait * 3): // IDK
 				}
 				return nil
 			}

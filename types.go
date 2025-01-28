@@ -1,13 +1,13 @@
 package cueball
 
 import (
+	"context"
 	"database/sql/driver"
-	"github.com/rs/zerolog"
 	"encoding/json"
 	"errors"
+	"github.com/rs/zerolog"
 	"strings"
 	"sync"
-	"context"
 )
 
 // Internal Error definitions
@@ -15,7 +15,7 @@ var (
 	EnumError = errors.New("invalid enum value")
 	EndError  = errors.New("iteration complete")
 	wgens     sync.Map
-	Lc            = zerolog.Ctx // import saver; kinda dumb
+	Lc        = zerolog.Ctx // import saver; kinda dumb
 )
 
 func RegWorker(ctx context.Context, f WorkerGen) {
@@ -29,7 +29,6 @@ func GenWorker(name string) Worker {
 	}
 	return w.(WorkerGen)()
 }
-
 
 func Workers() (ws []string) {
 	wgens.Range(func(n, _ any) bool {

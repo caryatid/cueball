@@ -3,20 +3,20 @@ package test
 import (
 	"context"
 	"github.com/caryatid/cueball"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
-	"github.com/google/uuid"
 	"os"
 	"testing"
 	"time"
 )
 
 var (
-Dbconn = "postgresql://postgres:postgres@localhost:5432"
-Natsconn = "nats://localhost:4222"
+	Dbconn   = "postgresql://postgres:postgres@localhost:5432"
+	Natsconn = "nats://localhost:4222"
 )
 
-func Wload (in chan<- cueball.Worker) []uuid.UUID {
+func Wload(in chan<- cueball.Worker) []uuid.UUID {
 	var checks []uuid.UUID
 	for _, wname := range cueball.Workers() {
 		w := cueball.GenWorker(wname)
@@ -32,6 +32,3 @@ func TSetup(t *testing.T) (*assert.Assertions, context.Context) {
 	ctx = zerolog.New(os.Stdout).WithContext(ctx)
 	return assert.New(t), ctx
 }
-
-
-

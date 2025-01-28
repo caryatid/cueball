@@ -25,7 +25,6 @@ var (
 	DirectEnqueue = false
 )
 
-
 type WorkerGen func() Worker
 
 // TODO change [Method] name
@@ -55,7 +54,7 @@ type Executor interface {
 }
 
 type Namer interface {
-	Name () string
+	Name() string
 }
 
 // Retry provides an interface to allow different approaches.
@@ -71,6 +70,7 @@ type State interface {
 	Pipe
 	Log
 	Blob
+	Close() error
 	Start(context.Context) chan Worker
 	Wait(context.Context, time.Duration, []uuid.UUID) error
 	Check(context.Context, []uuid.UUID) bool
@@ -91,6 +91,7 @@ type Pipe interface {
 }
 
 type Blob interface {
+	Close()
 	Save(string, io.Reader) error
 	Load(string) (io.Reader, error)
 }

@@ -1,22 +1,21 @@
 package state_test
 
 import (
+	"context"
 	"github.com/caryatid/cueball"
-	"github.com/caryatid/cueball/worker"
 	"github.com/caryatid/cueball/internal/test"
 	"github.com/caryatid/cueball/state"
-	"context"
-	"time"
-	"testing"
+	"github.com/caryatid/cueball/worker"
 	"strings"
+	"testing"
+	"time"
 )
 
 var (
-	Logs = make(map[string]func (context.Context) cueball.Log)
-	Pipes = make(map[string]func (context.Context) cueball.Pipe)
-	Blobs = make(map[string]func (context.Context) cueball.Blob)
+	Logs  = make(map[string]func(context.Context) cueball.Log)
+	Pipes = make(map[string]func(context.Context) cueball.Pipe)
+	Blobs = make(map[string]func(context.Context) cueball.Blob)
 )
-
 
 func TestStateComponents(t *testing.T) {
 	assert, ctx := test.TSetup(t)
@@ -25,10 +24,10 @@ func TestStateComponents(t *testing.T) {
 	for pn, pg := range Pipes {
 		for ln, lg := range Logs {
 			for bn, bg := range Blobs {
-				tname := strings.Join([]string{pn,ln,bn}, "-")
+				tname := strings.Join([]string{pn, ln, bn}, "-")
 				s, ctx := state.NewState(ctx, pg(ctx),
-					lg(ctx),bg(ctx))
-				t.Run(tname, func (t *testing.T) {
+					lg(ctx), bg(ctx))
+				t.Run(tname, func(t *testing.T) {
 					err := TLog(ctx, s)
 					assert.NoError(err)
 					err = TPipe(ctx, s)
@@ -68,7 +67,7 @@ func TPipe(ctx context.Context, s cueball.State) error {
 			if err := w.Do(ctx, s); err != nil {
 				return err
 			}
-			if ! w.Done() { 
+			if !w.Done() {
 				enq <- w
 			}
 		}
@@ -81,4 +80,3 @@ func TPipe(ctx context.Context, s cueball.State) error {
 	}
 	return err
 }
-
