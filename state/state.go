@@ -53,9 +53,8 @@ func (s *defState) Start(ctx context.Context) chan cueball.Worker {
 			w.Do(ctx, s) // error handled inside
 			if !w.Done() {
 				if cueball.DirectEnqueue {
+					w.SetStatus(cueball.INFLIGHT)
 					enq <- w
-				} else {
-					w.SetStatus(cueball.ENQUEUE)
 				}
 			}
 			store <- w

@@ -69,6 +69,8 @@ func (e *defaultExecutor) Do(ctx context.Context, s cueball.State) error {
 	}
 	if e.Done() {
 		e.StatusI = cueball.DONE
+	} else {
+		e.StatusI = cueball.ENQUEUE
 	}
 	return err
 }

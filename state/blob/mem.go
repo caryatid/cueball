@@ -18,6 +18,10 @@ func (b *mem) Save(key string, r io.Reader) error {
 	return nil
 }
 
+func (b *mem) Close() error {
+	return nil
+}
+
 func (b *mem) Load(key string) (io.Reader, error) {
 	return nil, nil
 }

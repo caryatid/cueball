@@ -91,7 +91,7 @@ type Pipe interface {
 }
 
 type Blob interface {
-	Close()
+	Close() error
 	Save(string, io.Reader) error
 	Load(string) (io.Reader, error)
 }

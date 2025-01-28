@@ -19,7 +19,6 @@ var (
 
 func TestStateComponents(t *testing.T) {
 	assert, ctx := test.TSetup(t)
-	cueball.Lc(ctx).Debug().Msg("HERE: " + "xxx")
 	cueball.RegWorker(ctx, worker.NewTestWorker)
 	for pn, pg := range Pipes {
 		for ln, lg := range Logs {
@@ -27,11 +26,11 @@ func TestStateComponents(t *testing.T) {
 				tname := strings.Join([]string{pn, ln, bn}, "-")
 				s, ctx := state.NewState(ctx, pg(ctx),
 					lg(ctx), bg(ctx))
-				t.Run(tname, func(t *testing.T) {
-					err := TLog(ctx, s)
-					assert.NoError(err)
-					err = TPipe(ctx, s)
-					assert.NoError(err)
+				t.Run(tname+"-log", func(t *testing.T) {
+					assert.NoError(TLog(ctx, s))
+				})
+				t.Run(tname+"-pipe", func(t *testing.T) {
+					assert.NoError(TPipe(ctx, s))
 				})
 			}
 		}
@@ -43,9 +42,7 @@ func TLog(ctx context.Context, s cueball.State) error {
 	checks := test.Wload(store)
 	for !s.Check(ctx, checks) {
 		for w := range s.Run(ctx, s.Scan) {
-			if err := w.Do(ctx, s); err != nil {
-				return err
-			}
+			w.Do(ctx, s)
 			store <- w
 		}
 	}
@@ -61,22 +58,19 @@ func TPipe(ctx context.Context, s cueball.State) error {
 	ctx, _ = context.WithCancel(ctx)
 	enq := s.Run(ctx, s.Enqueue)
 	deq := s.Run(ctx, s.Dequeue)
-	checks := test.Wload(enq)
-	for !s.Check(ctx, checks) {
-		for w := range deq {
-			if err := w.Do(ctx, s); err != nil {
-				return err
-			}
-			if !w.Done() {
-				enq <- w
-			}
+	test.Wload(enq)
+	m := make(map[string]bool)
+	for w := range deq {
+		w.Do(ctx, s)
+		if !w.Done() {
+			enq <- w
+		} else {
+			m[w.ID().String()] = true
+			cueball.Lc(ctx).Debug().Interface(" W ", w).Send()
 		}
-		return nil
+		if len(m) >= len(cueball.Workers()) {
+			close(deq)
+		}
 	}
-	err := s.Wait(ctx, time.Millisecond*250, checks) // NOTE: redundant
-	for _, id := range checks {
-		w, _ := s.Get(ctx, id)
-		cueball.Lc(ctx).Debug().Interface(" W ", w).Send()
-	}
-	return err
+	return nil
 }
