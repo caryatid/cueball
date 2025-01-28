@@ -7,7 +7,6 @@ import (
 	"errors"
 	"strings"
 	"sync"
-	"fmt"
 	"context"
 )
 
@@ -16,54 +15,21 @@ var (
 	EnumError = errors.New("invalid enum value")
 	EndError  = errors.New("iteration complete")
 	wgens     sync.Map
-	pgens     sync.Map
-	lgens     sync.Map
-	bgens     sync.Map
 	Lc            = zerolog.Ctx // import saver; kinda dumb
 )
 
-type StateComponent interface {
-	Pipe | Log | Blob | Worker
+func RegWorker(ctx context.Context, f WorkerGen) {
+	wgens.Store(f().Name(), f)
 }
 
-
-func RegisterComponent[C StateComponent](ctx context.Context, 
-		name string, f func (context.Context) C) {
-	switch f.(type) {
-	case PipeGen:
-		pgens.Store(name, f)
-	case LogGen:
-		lgens.Store(name, f)
-	case BlobGen:
-		bgens.Store(name, f)
-	case Worker:
-		bgens.Store(name, f)
-	}
-}
-
-func GenPipe(ctx context.Context, name string) cueball.Pipe {
-	p, ok := pgens.Load(name)
+func GenWorker(name string) Worker {
+	w, ok := wgens.Load(name)
 	if !ok {
 		return nil
 	}
-	return p.(PipeGen)(ctx)
+	return w.(WorkerGen)()
 }
 
-func GenLog(ctx context.Context, name string) cueball.Pipe {
-	l, ok := lgens.Load(name)
-	if !ok {
-		return nil
-	}
-	return l.(LogGen)(ctx)
-}
-
-func GenLog(ctx context.Context, name string) cueball.Pipe {
-	l, ok := lgens.Load(name)
-	if !ok {
-		return nil
-	}
-	return l.(LogGen)(ctx)
-}
 
 func Workers() (ws []string) {
 	wgens.Range(func(n, _ any) bool {

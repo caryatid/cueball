@@ -26,10 +26,7 @@ var (
 )
 
 
-type WorkerGen func(context.Context) Worker
-type PipeGen func(context.Context) Pipe
-type LogGen func(context.Context) Log
-type BlobGen func(context.Context) Blob
+type WorkerGen func() Worker
 
 // TODO change [Method] name
 type Method func(context.Context, State) error
@@ -57,9 +54,10 @@ type Executor interface {
 	Done() bool                      // indicates, regardless of success or failure, the worker is done
 }
 
-type Namer string {
+type Namer interface {
 	Name () string
 }
+
 // Retry provides an interface to allow different approaches.
 // Simple counter and backoff examples are provided.
 type Retry interface {
@@ -75,11 +73,11 @@ type State interface {
 	Blob
 	Start(context.Context) chan Worker
 	Wait(context.Context, time.Duration, []uuid.UUID) error
+	Check(context.Context, []uuid.UUID) bool
 	Run(context.Context, RunFunc) chan Worker
 }
 
 type Log interface {
-	Namer
 	Close() error
 	Store(context.Context, chan Worker) error
 	Scan(context.Context, chan Worker) error
@@ -87,14 +85,12 @@ type Log interface {
 }
 
 type Pipe interface {
-	Namer
 	Close() error
 	Enqueue(context.Context, chan Worker) error
 	Dequeue(context.Context, chan Worker) error
 }
 
 type Blob interface {
-	Namer
 	Save(string, io.Reader) error
 	Load(string) (io.Reader, error)
 }

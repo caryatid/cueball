@@ -65,7 +65,20 @@ func (s *defState) Start(ctx context.Context) chan cueball.Worker {
 	return enq
 }
 
-func (s *defState) Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID) error {
+func (s *defState) Check(ctx context.Context, ids []uuid.UUID) bool {
+	for _, id := range ids {
+		w, err := s.Get(ctx, id)
+		if err != nil || w == nil { // FIX: timing issue sidestepped.
+			continue
+		}
+		if !w.Done() {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *defState) Wait(ctx context.Context, wait time.Duration, checks []uuid.UUID) error {
 	tick := time.NewTicker(wait)
 	for {
 		select {
@@ -73,18 +86,7 @@ func (s *defState) Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID
 			s.Close()
 			return nil
 		case <-tick.C:
-			gtg := true
-			for _, id := range ids {
-				w, err := s.Get(ctx, id)
-				if err != nil || w == nil {
-					continue
-				}
-				if !w.Done() {
-					gtg = false
-					break
-				}
-			}
-			if gtg {
+			if s.Check(ctx, checks) {
 				c := make(chan error)
 				go func() {
 					defer close(c)
@@ -93,7 +95,7 @@ func (s *defState) Wait(ctx context.Context, wait time.Duration, ids []uuid.UUID
 				select {
 				case err, _ := <-c: // TODO handle ok
 					return err
-				case <-time.After(time.Millisecond * 750):
+				case <-time.After(wait * 4): // IDK
 				}
 				return nil
 			}

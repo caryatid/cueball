@@ -113,7 +113,7 @@ func (l *pg) Close() error {
 }
 
 func (l *pg) dum(wname string, data []byte) (cueball.Worker, error) { // data unmarshal
-	w := cueball.Gen(wname)
+	w := cueball.GenWorker(wname)
 	if err := json.Unmarshal([]byte(data), w); err != nil {
 		return nil, err
 	}

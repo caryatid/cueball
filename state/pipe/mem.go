@@ -42,7 +42,7 @@ func (p *mem) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 func (p *mem) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 	defer close(ch)
 	for w := range p.queue {
-		w_ := cueball.Gen(w.Name())
+		w_ := cueball.GenWorker(w.Name())
 		p.emulateSerialize(w, w_)
 		if ctx.Err() != nil {
 			return ctx.Err()

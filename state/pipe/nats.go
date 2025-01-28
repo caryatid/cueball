@@ -70,7 +70,7 @@ func (p *natsp) subread(ctx context.Context, name string,
 			if err != nil {
 				return err
 			}
-			w := cueball.Gen(name)
+			w := cueball.GenWorker(name)
 			if err := json.Unmarshal(msg.Data, w); err != nil {
 				return err
 			}

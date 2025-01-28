@@ -118,7 +118,7 @@ func (p *fifo) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 			if err := state.Unmarshal(data, pk); err != nil {
 				return err
 			}
-			w := cueball.Gen(pk.Name)
+			w := cueball.GenWorker(pk.Name)
 			if err := state.Unmarshal(pk.Codec, w); err != nil {
 				return err
 			}

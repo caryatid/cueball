@@ -162,7 +162,7 @@ func (l *fsys) filemap() (map[string]cueball.Worker, error) {
 			return nil, err
 		}
 		fe, _ := fnameUnpack(f) // already done once; shouldn't error
-		w := cueball.Gen(fe.wname)
+		w := cueball.GenWorker(fe.wname)
 		err = state.Unmarshal(data, w)
 		fm[id.Name()] = w
 	}

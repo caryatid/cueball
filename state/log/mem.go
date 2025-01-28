@@ -36,7 +36,7 @@ func (l *mem) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	if !ok {
 		return nil, nil // TODO error
 	}
-	w := cueball.Gen(w__.Name())
+	w := cueball.GenWorker(w__.Name())
 	l.emulateSerialize(w__, w)
 	return w, nil
 }
