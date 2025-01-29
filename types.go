@@ -1,7 +1,6 @@
 package cueball
 
 import (
-	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -18,8 +17,10 @@ var (
 	Lc        = zerolog.Ctx // import saver; kinda dumb
 )
 
-func RegWorker(ctx context.Context, f WorkerGen) {
-	wgens.Store(f().Name(), f)
+func RegWorker(fs ...WorkerGen) {
+	for _, f := range fs {
+		wgens.Store(f().Name(), f)
+	}
 }
 
 func GenWorker(name string) Worker {

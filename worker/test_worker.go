@@ -32,7 +32,6 @@ func (w *testWorker) Name() string {
 	return "test-worker"
 }
 
-// NOTE: do not use state so tests may have nil state args
 func (w *testWorker) Stage1(ctx context.Context, s cueball.State) error {
 	w.TestString = "one"
 	w.TestInt = 1

@@ -18,7 +18,7 @@ var (
 
 func TestStateComponents(t *testing.T) {
 	assert, ctx := test.TSetup(t)
-	cueball.RegWorker(ctx, worker.NewTestWorker)
+	cueball.RegWorker(worker.NewTestWorker)
 	for pn, pg := range Pipes {
 		for ln, lg := range Logs {
 			for bn, bg := range Blobs {

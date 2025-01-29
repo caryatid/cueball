@@ -14,7 +14,7 @@ import (
 
 func TestWorker(t *testing.T) {
 	assert, ctx := test.TSetup(t)
-	cueball.RegGen(NewCountWorker, NewStageWorker, worker.NewTestWorker)
+	cueball.RegWorker(NewCountWorker, NewStageWorker, worker.NewTestWorker)
 	p, err := pipe.NewNats(ctx, test.Natsconn)
 	assert.NoError(err)
 	l, err := log.NewPG(ctx, test.Dbconn)
@@ -23,7 +23,7 @@ func TestWorker(t *testing.T) {
 	enq := s.Start(ctx)
 	var checks []uuid.UUID
 	for _, wname := range cueball.Workers() {
-		w := cueball.Gen(wname)
+		w := cueball.GenWorker(wname)
 		assert.False(w.Done())
 		enq <- w
 		checks = append(checks, w.ID())
