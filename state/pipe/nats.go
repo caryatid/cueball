@@ -56,6 +56,21 @@ func (p *natsp) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
 	return nil
 }
 
+func (p *natsp) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
+	defer close(ch)
+	t := time.NewTicker(time.Millisecond * 150)
+	p.workerscan(ctx, ch)
+	for {
+		select {
+		case <-ctx.Done():
+			return p.g.Wait()
+		case <-t.C:
+			p.workerscan(ctx, ch)
+		}
+	}
+	return nil
+}
+
 func (p *natsp) subread(ctx context.Context, name string,
 	ch chan cueball.Worker) error {
 	subname := prefix + name
@@ -94,19 +109,4 @@ func (p *natsp) workerscan(ctx context.Context, ch chan cueball.Worker) {
 			p.subread(ctx, name, ch)
 		}
 	}
-}
-
-func (p *natsp) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
-	defer close(ch)
-	t := time.NewTicker(time.Millisecond * 150)
-	p.workerscan(ctx, ch)
-	for {
-		select {
-		case <-ctx.Done():
-			return p.g.Wait()
-		case <-t.C:
-			p.workerscan(ctx, ch)
-		}
-	}
-	return nil
 }

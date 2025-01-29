@@ -62,17 +62,17 @@ func (e *defaultExecutor) Do(ctx context.Context, s cueball.State) error {
 		if !st.Attempt.Again() {
 			st.Success = false // explicit but should not be necessary
 			e.StatusI = cueball.FAIL
+			return err
 		}
-	} else {
-		st.Success = true
-		st.Complete = true
 	}
+	st.Success = true
+	st.Complete = true
 	if e.Done() {
 		e.StatusI = cueball.DONE
 	} else {
 		e.StatusI = cueball.ENQUEUE
 	}
-	return err
+	return err // returns error even if retry is gtg
 }
 
 func (e *defaultExecutor) current() *step {

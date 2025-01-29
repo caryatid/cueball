@@ -8,7 +8,6 @@ import (
 	"github.com/caryatid/cueball/worker"
 	"strings"
 	"testing"
-	"time"
 )
 
 var (
@@ -29,6 +28,8 @@ func TestStateComponents(t *testing.T) {
 				t.Run(tname+"-log", func(t *testing.T) {
 					assert.NoError(TLog(ctx, s))
 				})
+				s, ctx = state.NewState(ctx, pg(ctx),
+					lg(ctx), bg(ctx))
 				t.Run(tname+"-pipe", func(t *testing.T) {
 					assert.NoError(TPipe(ctx, s))
 				})
@@ -46,19 +47,18 @@ func TLog(ctx context.Context, s cueball.State) error {
 			store <- w
 		}
 	}
-	err := s.Wait(ctx, time.Millisecond*250, checks) // NOTE: redundant
 	for _, id := range checks {
 		w, _ := s.Get(ctx, id)
 		cueball.Lc(ctx).Debug().Interface(" W ", w).Send()
 	}
-	return err
+	return s.Close()
 }
 
 func TPipe(ctx context.Context, s cueball.State) error {
 	ctx, _ = context.WithCancel(ctx)
 	enq := s.Run(ctx, s.Enqueue)
 	deq := s.Run(ctx, s.Dequeue)
-	test.Wload(enq)
+	checks := test.Wload(enq)
 	m := make(map[string]bool)
 	for w := range deq {
 		w.Do(ctx, s)
@@ -68,9 +68,9 @@ func TPipe(ctx context.Context, s cueball.State) error {
 			m[w.ID().String()] = true
 			cueball.Lc(ctx).Debug().Interface(" W ", w).Send()
 		}
-		if len(m) >= len(cueball.Workers()) {
-			close(deq)
+		if len(m) >= len(checks) {
+			break
 		}
 	}
-	return nil
+	return s.Close()
 }
