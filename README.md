@@ -20,7 +20,7 @@ been effectively ubiquitous; OC is a complete outlier and utterly unique in my 2
     - Production: Artifact only deployments. Isloated: any manual interaction *at all* is an "incident" or is becuase of an "incident". No exceptions at all. If you need manual interaction to deploy software than you, definitionally, do not have a production system and all deployments ought be hard halted until you do. Can be ephemerally deployed using disaster recovery data for population. Previous releases (rollbacks) are completely reliable and evidenced - but not necessarily easy b/c of the data.
     - UAT: Artifact only deployments. Isoloated: no manual interaction but no incident if there is provided UAT is ultimatlely still entirely created by automation. UAT is identical to production on moment of prod deploy and may be one version ahead for any deployable at other times. Can be deployed ephemerally (automatically: push button) other than the actual data itself. An new UAT deployment is, definitionally, a staging environment. UAT has "real" data although it may be obfuscated for PII reasons. That data difference and the size of the environment (number of machines) are the only allowed constant deviations from PROD. rollbacks push button and reliable -- should be easy.
     - Staging: Artifact only deployments. Manual interaction allowed, but when manual interaction occurs it ought trigger a full redploy of staging before next prod release. Can have all kinds of mixmatched versions but generally is like a UAT that is smaller and devs/QA/ops will broadly have access to the data and backing services.  Putting it in a broken state is allowed if everyone involved is aware. Generally, however, if an action risks breakage then you ought simply deploy a new staging and work there. Can deploy an previous release, but not done as rollback -- just a new deploy with older software versions. -- easy because no data reqs other than schema and all artifact deploy.
-    - Development: Can be deployed to directly by engineering staff. Is easily and individually ephemeral. Meaning *any* dev can say (ideally to an RPC or REST endpoint) "give me a new staging" and get one quickly by an automated process. Additionally such environments can have any versions for any deployed components.  The initial deployment of a dev environment will be pushbutton and artifact only; but further updates can be willy nilly.
+    - Development: Can be deployed to directly by engineering staff. Is easily and individually ephemeral. Meaning *any* dev can say (ideally to an RPC or REST endpoint) "give me a new dev env" and get one quickly by an automated process. Additionally such environments can have any versions for any deployed components.  The initial deployment of a dev environment will be pushbutton and artifact only; but further updates can be willy nilly.
     - Local Dev: Must be able to fully test all code. Meaning there must be scaffolding for any backing service to run *locally*. If you need to connect to a VPN and external database to simply execute your local code than you don't have local dev environments and all deployments ought be halted until you do.
 
 
@@ -40,9 +40,33 @@ Dev's generally should not need access to external databases of any kind. There 
     3) PRs and _dev repos. The "_dev" repo thing is simply needless retardation. That's the soft, kind, understated way to state it. Never seen such sillyness -- just lock down master ( or main if you're gay ) and do regular PR's for merge to master like every single org in the field has been doing for over 2 decades.  *All* code discussion should happen in writing with PR's. In general, in engineering overall, if it's not written down - in one unambiguous place - then it doesn't exist. More on this in a later section - but a big issue here is we use .doc .xls files for communication! Uh, maybe we could use that amazing technological inovation created decades ago ... Version control. Wow. Who would have thought of that. Oh, right, ever developer group ever. Why would any document getting edited by multiple people every use a binary format for that document? Masochism is the only sane answer there.
 
 ### developer communication
-Stop it. Just stop it now. I've spoken to Paul, last week, on the phone more than any other person I know ever. I've never, in my life, had a developer call me to show me code ever. It's so dumb. make a branch and send it over. We can talk -- in writing, with version control - in a file within the branch or via a PR page. It's a huge waste of time but is downstream of a naster patern here. That pattern is a kind of engineering suicide by a thousand self inflicted cuts (are we edgy dumb teanagers with a razor? No; we are something much more cring worthy.) Think I'll need an analogy to explain as our process is singular in the engineering world. If our development process were used to build a table we'd get 4 carpenters together have them talk talk talk then one will route the legs, another will cut the joinery for legs and surface, we'll then take turns putting the legs on while another dev planes the surface. When built we will then learn that the table need be adjusted on some dimension. Until OC don't think I've had a core task that was shorter than 12 weeks. The constant tiny steps each one updated and enterred in xls, jira, teams, email, calls etc. Why all this extraneous sillyness? Atlassian is for business people not for devs, do you not know that?  When devs use it, it is generally as an opaque target -- meaning a githook might update a jira ticket from a dev's work, but the dev isn't logging into Jira -- it's not for them. 
+Stop it. Just stop it now. I've spoken to Paul, last week, on the phone more than any other person I know ever. I've never, in my life, had a developer call me to show me code ever. It's so dumb. make a branch and send it over. We can talk -- in writing, with version control - in a file within the branch or via a PR page. It's a huge waste of time but is downstream of a nastier patern here. That pattern is a kind of engineering suicide by a thousand self inflicted cuts (are we edgy dumb teanagers with a razor? No; we are something much more cring worthy.) Think I'll need an analogy to explain as our process is singular in the engineering world. If our development process were used to build a table we'd get 4 carpenters together have them talk talk talk then one will route the legs, another will cut the joinery for legs and surface, we'll then take turns putting the legs on while another dev planes the surface. When built we will then learn that the table need be adjusted on some dimension. Until OC don't think I've had a core task that was shorter than 12 weeks. The constant tiny steps each one updated and enterred in xls, jira, teams, email, calls etc. Why all this extraneous sillyness? Atlassian is for business people not for devs, do you not know that?  When devs use it, it is generally as an opaque target -- meaning a githook might update a jira ticket from a dev's work, but the dev isn't logging into Jira -- it's not for them. Ops often use jira, idk why.
 
 ### design, testing, and work allocation 
+Our systems appear inverted. I spoke a bit on our last interview day about liking data
+services; a centralized piece of software that serves up the datas. Additionally good if 
+on the wire. I did not, at that time, mean anything like what our data services are. 
+The intention of a data service is to provide a single *conceptual* interface to your
+business level data types. Essentially following the common HTTP pattern of 
+`resources` and `collections`. If on the wire; simple request -> reply.
+args:
+
+ - for resources, id and sometimes id and type.
+	returns only a single item (although it may have nested data)
+ - for collections, various matches on contextually relevant fields
+	returs a list and/or set of resources. sometimes just the ids
+
+Callers of this service should be entirely blind to if the data
+is coming from a database, file, external integration, hyperborea, ... 
+This layer facilitates -- actually more than that; makes possible -- sensible caching.
+
+most of the software in the system should be blind to the details of 
+persistence.
+
+#### testing
+
+
+
 
 
 # imagine the `qt` situation.
