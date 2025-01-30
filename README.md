@@ -44,8 +44,8 @@ Stop it. Just stop it now. I've spoken to Paul, last week, on the phone more tha
 
 ### design, testing, and work allocation 
 Our systems appear inverted. I spoke a bit on our last interview day about liking data
-services; a centralized piece of software that serves up the datas. Additionally good if 
-on the wire. I did not, at that time, mean anything like what our data services are. 
+services: a centralized piece of software that serves up the datas. Mentioned, additionally,
+good if on the wire. I did not, at that time, mean anything like what our data services are. 
 The intention of a data service is to provide a single *conceptual* interface to your
 business level data types. Essentially following the common HTTP pattern of 
 `resources` and `collections`. If on the wire; simple request -> reply.
@@ -64,10 +64,6 @@ most of the software in the system should be blind to the details of
 persistence.
 
 #### testing
-
-
-
-
 
 # imagine the `qt` situation.
 ## network (squad)
