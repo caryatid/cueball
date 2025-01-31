@@ -14,7 +14,6 @@ package cueball
 import (
 	"context"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"time"
 )
@@ -30,7 +29,6 @@ type WorkerGen func() Worker
 
 // TODO change [Method] name
 type Method func(context.Context, State) error
-type RunFunc func(ctx context.Context, ch chan Worker) error
 
 // Worker is the interface that must be defined by clients of this library
 // Worker structs will, generally, simply use the DefaultExecuter to register
@@ -69,17 +67,18 @@ type Retry interface {
 
 type State interface {
 	Pipe
-	Log
+	Record
 	Blob
 	Close() error
 	Start(context.Context) chan Worker
 	Wait(context.Context, time.Duration, []uuid.UUID) error
 	Check(context.Context, []uuid.UUID) bool
-	Group() *errgroup.Group
-	Run(context.Context, RunFunc) chan Worker
+	Enq() chan Worker
+	Deq() chan Worker
+	Rec() chan Worker
 }
 
-type Log interface {
+type Record interface {
 	Close() error
 	Store(context.Context, chan Worker) error
 	Scan(context.Context, chan Worker) error

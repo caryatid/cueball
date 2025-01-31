@@ -20,7 +20,7 @@ INSERT INTO execution_log (id, stage, worker, data, until)
 VALUES($1, $2, $3, $4, $5);
 `
 
-var loadworkfmt = `
+var loadworkfmt__ = `
 WITH x AS (SELECT id, worker, data, until
 FROM execution_state WHERE stage = 'ENQUEUE' AND 
 (until IS NULL OR NOW() >= until))
@@ -28,6 +28,12 @@ INSERT INTO execution_log (id, stage, worker, data, until)
 SELECT id, 'INFLIGHT', worker, data, until
 FROM x
 RETURNING worker, data
+`
+
+var loadworkfmt = `
+SELECT worker, data
+FROM execution_state WHERE stage = 'ENQUEUE' AND 
+(until IS NULL OR NOW() >= until)
 `
 
 type pg struct {
