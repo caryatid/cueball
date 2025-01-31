@@ -36,6 +36,9 @@ func (s *defState) Run(ctx context.Context, f cueball.RunFunc) chan cueball.Work
 	return ch
 }
 
+func (s *defState) Group() *errgroup.Group {
+	return s.g
+}
 func (s *defState) Start(ctx context.Context) chan cueball.Worker {
 	enq := s.Run(ctx, s.Enqueue)
 	deq := s.Run(ctx, s.Dequeue)
@@ -68,7 +71,7 @@ func (s *defState) Check(ctx context.Context, ids []uuid.UUID) bool {
 	for _, id := range ids {
 		w, err := s.Get(ctx, id)
 		if err != nil || w == nil { // FIX: timing issue sidestepped.
-			continue
+			return false
 		}
 		if !w.Done() {
 			return false
@@ -103,14 +106,14 @@ func (s *defState) Wait(ctx context.Context, wait time.Duration, checks []uuid.U
 }
 
 func (s *defState) Close() error {
+	if s.Blob != nil {
+		//	s.Blob.Close()
+	}
 	if s.Pipe != nil {
 		s.Pipe.Close()
 	}
 	if s.Log != nil {
 		s.Log.Close()
-	}
-	if s.Blob != nil {
-		//	s.Blob.Close()
 	}
 	return nil
 }

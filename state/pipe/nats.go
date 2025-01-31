@@ -17,11 +17,13 @@ type natsp struct {
 	Nats *nats.Conn
 	sub  sync.Map
 	g    *errgroup.Group
+	done chan struct{}
 }
 
 func NewNats(ctx context.Context, natsurl string) (cueball.Pipe, error) {
 	var err error
 	p := new(natsp)
+	p.done = make(chan struct{})
 	p.g, ctx = errgroup.WithContext(ctx)
 	p.Nats, err = nats.Connect(natsurl)
 	if err != nil {
@@ -31,13 +33,14 @@ func NewNats(ctx context.Context, natsurl string) (cueball.Pipe, error) {
 }
 
 func (p *natsp) Close() error {
+	p.done <- struct{}{}
 	p.sub.Range(func(k, sub_ any) bool {
 		sub := sub_.(*nats.Subscription)
 		sub.Drain()
+		sub.Unsubscribe()
 		return true
 	})
-	p.Nats.Drain()
-	return nil
+	return p.Nats.Drain()
 }
 
 func (p *natsp) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
@@ -62,6 +65,8 @@ func (p *natsp) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
 	p.workerscan(ctx, ch)
 	for {
 		select {
+		case <-p.done:
+			return p.g.Wait()
 		case <-ctx.Done():
 			return p.g.Wait()
 		case <-t.C:

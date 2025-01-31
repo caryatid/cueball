@@ -8,6 +8,7 @@ import (
 	"github.com/caryatid/cueball/worker"
 	"strings"
 	"testing"
+	"time"
 )
 
 var (
@@ -23,22 +24,31 @@ func TestStateComponents(t *testing.T) {
 		for ln, lg := range Logs {
 			for bn, bg := range Blobs {
 				tname := strings.Join([]string{pn, ln, bn}, "-")
-				s, ctx := state.NewState(ctx, pg(ctx),
-					lg(ctx), bg(ctx))
-				t.Run(tname+"-log", func(t *testing.T) {
-					assert.NoError(TLog(ctx, s))
+				s, ctx := state.NewState(ctx, nil,
+					lg(ctx), nil)
+				t.Run(tname+"/log", func(t *testing.T) {
+					assert.NoError(logT(ctx, s))
 				})
 				s, ctx = state.NewState(ctx, pg(ctx),
-					lg(ctx), bg(ctx))
-				t.Run(tname+"-pipe", func(t *testing.T) {
-					assert.NoError(TPipe(ctx, s))
+					nil, nil)
+				t.Run(tname+"/pipe", func(t *testing.T) {
+					assert.NoError(pipeT(ctx, s))
+				})
+				s, ctx = state.NewState(ctx, nil,
+					nil, bg(ctx))
+				t.Run(tname+"/blob", func(t *testing.T) {
+					assert.NoError(blobT(ctx, s))
 				})
 			}
 		}
 	}
 }
 
-func TLog(ctx context.Context, s cueball.State) error {
+func blobT(ctx context.Context, s cueball.State) error {
+	return s.Close()
+}
+
+func logT(ctx context.Context, s cueball.State) error {
 	store := s.Run(ctx, s.Store)
 	checks := test.Wload(store)
 	for !s.Check(ctx, checks) {
@@ -54,23 +64,31 @@ func TLog(ctx context.Context, s cueball.State) error {
 	return s.Close()
 }
 
-func TPipe(ctx context.Context, s cueball.State) error {
+func pipeT(ctx context.Context, s cueball.State) error {
 	ctx, _ = context.WithCancel(ctx)
-	enq := s.Run(ctx, s.Enqueue)
 	deq := s.Run(ctx, s.Dequeue)
-	checks := test.Wload(enq)
+	enq := s.Run(ctx, s.Enqueue)
 	m := make(map[string]bool)
-	for w := range deq {
-		w.Do(ctx, s)
-		if !w.Done() {
-			enq <- w
-		} else {
-			m[w.ID().String()] = true
-			cueball.Lc(ctx).Debug().Interface(" W ", w).Send()
+	c := make(chan error)
+	go func() {
+		for w := range deq {
+			cueball.Lc(ctx).Debug().Interface(" x ", w).Send()
+			w.Do(ctx, s)
+			if !w.Done() {
+				cueball.Lc(ctx).Debug().Interface(" y ", w).Send()
+				enq <- w
+			} else {
+				m[w.ID().String()] = true
+				cueball.Lc(ctx).Debug().Interface(" W ", w).Send()
+			}
+			if len(m) >= len(cueball.Workers()) {
+				break
+			}
 		}
-		if len(m) >= len(checks) {
-			break
-		}
-	}
+		c <- nil
+	}()
+	time.Sleep(time.Millisecond * 50)
+	test.Wload(enq)
+	<-c
 	return s.Close()
 }

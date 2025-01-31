@@ -11,13 +11,13 @@ import (
 )
 
 func init() {
-	dname, err := os.MkdirTemp("", "test")
-	if err != nil {
-		panic(err)
-	}
 	// TODO: shit
 	// defer os.RemoveAll(dname)
 	Logs["fsys"] = func(ctx context.Context) cueball.Log {
+		dname, err := os.MkdirTemp("", "test")
+		if err != nil {
+			panic(err)
+		}
 		l, err := log.NewFsys(ctx, dname)
 		if err != nil {
 			panic(err)

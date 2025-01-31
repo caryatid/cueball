@@ -14,6 +14,7 @@ package cueball
 import (
 	"context"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 	"io"
 	"time"
 )
@@ -74,6 +75,7 @@ type State interface {
 	Start(context.Context) chan Worker
 	Wait(context.Context, time.Duration, []uuid.UUID) error
 	Check(context.Context, []uuid.UUID) bool
+	Group() *errgroup.Group
 	Run(context.Context, RunFunc) chan Worker
 }
 

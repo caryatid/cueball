@@ -1,5 +1,5 @@
 # cueball
-Basic workflow setup. Initially built to demonstrate golang design patterns.
+Basic workflow setup. Initially designed to demonstrate golang design patterns.
 
 # Motivating circumstances
 This project is largely motivated tangentially; by circumstances seen in the field
@@ -56,7 +56,7 @@ args:
  - for collections, various matches on contextually relevant fields
 	returs a list and/or set of resources. sometimes just the ids
 
-Callers of this service should be entirely blind to if the data
+Callers of a data service should be entirely blind to if the data
 is coming from a database, file, external integration, hyperborea, ... 
 This layer facilitates -- actually more than that; makes possible -- sensible caching.
 

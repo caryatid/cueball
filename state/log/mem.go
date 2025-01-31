@@ -12,13 +12,11 @@ import (
 var queue_size = 10 // TODO
 
 type mem struct {
-	ids   sync.Map
-	store chan cueball.Worker
+	ids sync.Map
 }
 
 func NewMem(ctx context.Context) (cueball.Log, error) {
 	l := new(mem)
-	l.store = make(chan cueball.Worker)
 	return l, nil
 }
 

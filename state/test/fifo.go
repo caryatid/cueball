@@ -10,11 +10,11 @@ import (
 )
 
 func init() {
-	dname, err := os.MkdirTemp("", "test")
-	if err != nil {
-		panic(err)
-	}
 	Pipes["fifo"] = func(ctx context.Context) cueball.Pipe {
+		dname, err := os.MkdirTemp("", "test")
+		if err != nil {
+			panic(err)
+		}
 		p, err := pipe.NewFifo(ctx, "fifo-test", dname)
 		if err != nil {
 			panic(err)
