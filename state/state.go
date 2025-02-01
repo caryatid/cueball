@@ -14,71 +14,49 @@ import (
 
 type defState struct {
 	scmutex sync.Locker
-	cueball.Pipe
-	cueball.Record
 	cueball.Blob
-	g    *errgroup.Group
-	enq  chan cueball.Worker
-	deq  chan cueball.Worker
-	rec  chan cueball.Worker
-	scan chan cueball.Worker
+	p   cueball.Pipe
+	r   cueball.Record
+	g   *errgroup.Group
+	enq chan cueball.Worker
+	deq chan cueball.Worker
+	rec chan cueball.Worker
 }
 
 func NewState(ctx context.Context, p cueball.Pipe, r cueball.Record,
 	b cueball.Blob) (cueball.State, context.Context) {
 	s := new(defState)
-	s.Pipe = p
-	s.Record = r
 	s.Blob = b
+	s.p = p
+	s.r = r
 	s.scmutex = new(sync.Mutex)
 	s.enq = make(chan cueball.Worker)
 	s.deq = make(chan cueball.Worker)
 	s.rec = make(chan cueball.Worker)
 	s.g, ctx = errgroup.WithContext(ctx)
-	if s.Pipe != nil {
-		s.g.Go(func() error { return s.Dequeue(ctx, s.deq) })
-		s.g.Go(func() error { return s.Enqueue(ctx, s.enq) })
+	if s.p != nil {
+		s.g.Go(func() error { return tickRun(ctx, s.deq, nil, s.p.Dequeue) })
+		s.g.Go(func() error { return rangeRun(ctx, s.enq, s.p.Enqueue) })
 	}
-	if s.Record != nil {
-		s.g.Go(func() error { return s.Store(ctx, s.rec) })
+	if s.r != nil {
+		s.g.Go(func() error { return rangeRun(ctx, s.rec, s.r.Store) })
+		s.g.Go(func() error { return tickRun(ctx, s.enq, s.scmutex, s.r.Scan) })
 	}
+	s.g.Go(func() error { return rangeRun(ctx, s.deq, s.Work) })
 	return s, ctx
 }
 
-func (s *defState) RunScan(ctx context.Context) chan cueball.Worker {
-	ch := make(chan cueball.Worker)
-	s.g.Go(func() error {
-		s.scmutex.Lock()
-		defer s.scmutex.Unlock()
-		defer close(ch)
-		return s.Scan(ctx, ch)
-	})
-	return ch
+func (s *defState) Work(ctx context.Context, w cueball.Worker) error {
+	w.Do(ctx, s) // error handled inside
+	if cueball.DirectEnqueue && !w.Done() {
+		s.enq <- w
+	}
+	s.rec <- w
+	return nil
 }
 
-func (s *defState) Start(ctx context.Context) chan cueball.Worker {
-	s.g.Go(func() error {
-		for {
-			for w := range s.RunScan(ctx) {
-				w.SetStatus(cueball.INFLIGHT)
-				s.rec <- w
-				s.enq <- w
-			}
-			time.Sleep(time.Millisecond * 15) // TODO
-		}
-		return nil
-	})
-	s.g.Go(func() error {
-		for w := range s.deq {
-			w.Do(ctx, s) // error handled inside
-			if cueball.DirectEnqueue && !w.Done() {
-				s.enq <- w
-			}
-			s.rec <- w
-		}
-		return nil
-	})
-	return s.enq
+func (s *defState) Get(ctx context.Context, u uuid.UUID) (cueball.Worker, error) {
+	return s.r.Get(ctx, u)
 }
 
 func (s *defState) Check(ctx context.Context, ids []uuid.UUID) bool {
@@ -119,15 +97,15 @@ func (s *defState) Wait(ctx context.Context, wait time.Duration, checks []uuid.U
 	}
 }
 
-func (s *defState) Enq() chan cueball.Worker {
+func (s *defState) Enq() chan<- cueball.Worker {
 	return s.enq
 }
 
-func (s *defState) Deq() chan cueball.Worker {
+func (s *defState) Deq() <-chan cueball.Worker {
 	return s.deq
 }
 
-func (s *defState) Rec() chan cueball.Worker {
+func (s *defState) Rec() chan<- cueball.Worker {
 	return s.rec
 }
 
@@ -135,11 +113,11 @@ func (s *defState) Close() error {
 	if s.Blob != nil {
 		//	s.Blob.Close()
 	}
-	if s.Pipe != nil {
-		s.Pipe.Close()
+	if s.p != nil {
+		s.p.Close()
 	}
-	if s.Record != nil {
-		s.Record.Close()
+	if s.r != nil {
+		s.r.Close()
 	}
 	return nil
 }
@@ -166,4 +144,45 @@ func Marshal(w interface{}) ([]byte, error) {
 	data := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
 	base64.StdEncoding.Encode(data, b)
 	return data, nil
+}
+
+func rangeRun(ctx context.Context, ch <-chan cueball.Worker,
+	f cueball.WMethod) error {
+	for w := range ch {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err := f(ctx, w); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func tickRun(ctx context.Context, ch chan<- cueball.Worker, l sync.Locker,
+	f cueball.WCMethod) error {
+	t := time.NewTicker(time.Millisecond * 150)
+	if err := lockRun(ctx, ch, l, f); err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+			if err := lockRun(ctx, ch, l, f); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func lockRun(ctx context.Context, ch chan<- cueball.Worker, l sync.Locker,
+	f cueball.WCMethod) error {
+	if l != nil {
+		l.Lock()
+		defer l.Unlock()
+	}
+	return f(ctx, ch)
 }

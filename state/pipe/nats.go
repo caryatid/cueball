@@ -7,9 +7,9 @@ import (
 	"github.com/nats-io/nats.go"
 	"golang.org/x/sync/errgroup"
 	"sync"
-	"time"
 )
 
+// TODO think on this
 // pub/sub key prefix for nats
 var prefix = "cueball.pg."
 
@@ -17,13 +17,11 @@ type natsp struct {
 	Nats *nats.Conn
 	sub  sync.Map
 	g    *errgroup.Group
-	done chan struct{}
 }
 
 func NewNats(ctx context.Context, natsurl string) (cueball.Pipe, error) {
 	var err error
 	p := new(natsp)
-	p.done = make(chan struct{})
 	p.g, ctx = errgroup.WithContext(ctx)
 	p.Nats, err = nats.Connect(natsurl)
 	if err != nil {
@@ -33,7 +31,6 @@ func NewNats(ctx context.Context, natsurl string) (cueball.Pipe, error) {
 }
 
 func (p *natsp) Close() error {
-	p.done <- struct{}{}
 	p.sub.Range(func(k, sub_ any) bool {
 		sub := sub_.(*nats.Subscription)
 		sub.Drain()
@@ -43,41 +40,32 @@ func (p *natsp) Close() error {
 	return p.Nats.Drain()
 }
 
-func (p *natsp) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
-	for w := range ch {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		data, err := json.Marshal(w)
-		if err != nil {
-			return err
-		}
-		if err := p.Nats.Publish(prefix+w.Name(), data); err != nil {
-			return err
-		}
+func (p *natsp) Enqueue(ctx context.Context, w cueball.Worker) error {
+	data, err := json.Marshal(w)
+	if err != nil {
+		return err
 	}
-	return nil
+	return p.Nats.Publish(prefix+w.Name(), data)
 }
 
-func (p *natsp) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
-	defer close(ch)
-	t := time.NewTicker(time.Millisecond * 150)
-	p.workerscan(ctx, ch)
-	for {
-		select {
-		case <-p.done:
-			return p.g.Wait()
-		case <-ctx.Done():
-			return p.g.Wait()
-		case <-t.C:
-			p.workerscan(ctx, ch)
+func (p *natsp) Dequeue(ctx context.Context, ch chan<- cueball.Worker) error {
+	for _, name := range cueball.Workers() {
+		sub_, ok := p.sub.Load(name)
+		if !ok || !sub_.(*nats.Subscription).IsValid() {
+			if ok {
+				sub_.(*nats.Subscription).Unsubscribe()
+				sub_.(*nats.Subscription).Drain()
+			}
+			if err := p.subread(ctx, name, ch); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
 func (p *natsp) subread(ctx context.Context, name string,
-	ch chan cueball.Worker) error {
+	ch chan<- cueball.Worker) error {
 	subname := prefix + name
 	sub, err := p.Nats.QueueSubscribeSync(subname, subname)
 	if err != nil {
@@ -101,17 +89,4 @@ func (p *natsp) subread(ctx context.Context, name string,
 		}
 	})
 	return nil
-}
-
-func (p *natsp) workerscan(ctx context.Context, ch chan cueball.Worker) {
-	for _, name := range cueball.Workers() {
-		sub_, ok := p.sub.Load(name)
-		if !ok || !sub_.(*nats.Subscription).IsValid() {
-			if ok {
-				sub_.(*nats.Subscription).Unsubscribe()
-				sub_.(*nats.Subscription).Drain()
-			}
-			p.subread(ctx, name, ch)
-		}
-	}
 }

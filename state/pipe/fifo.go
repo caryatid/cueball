@@ -72,58 +72,45 @@ func (p *fifo) Close() error {
 	return nil
 }
 
-func (p *fifo) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
-	for w := range ch {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		time.Sleep(time.Millisecond * 5)
-		data, err := state.Marshal(w)
-		if err != nil {
-			return err
-		}
-		pk := &state.Pack{Name: w.Name(), Codec: string(data)}
-		wdata, err := state.Marshal(pk)
-		if err != nil {
-			return err
-		}
-		if err := func() error {
-			p.wl.Lock()
-			defer p.wl.Unlock()
-			_, err := p.in.Write(append(wdata, '\n'))
-			return err
-		}(); err != nil {
-			return err
-		}
+func (p *fifo) Enqueue(ctx context.Context, w cueball.Worker) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
-	return nil
+	time.Sleep(time.Millisecond * 5)
+	data, err := state.Marshal(w)
+	if err != nil {
+		return err
+	}
+	pk := &state.Pack{Name: w.Name(), Codec: string(data)}
+	wdata, err := state.Marshal(pk)
+	if err != nil {
+		return err
+	}
+	return func() error {
+		p.wl.Lock()
+		defer p.wl.Unlock()
+		_, err := p.in.Write(append(wdata, '\n'))
+		return err
+	}()
 }
 
-func (p *fifo) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
-	defer close(ch)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			data, err := func() (string, error) {
-				p.rl.Lock()
-				defer p.rl.Unlock()
-				return bufio.NewReader(p.out).ReadString('\n')
-			}()
-			if err != nil {
-				return err
-			}
-			pk := new(state.Pack)
-			if err := state.Unmarshal(data, pk); err != nil {
-				return err
-			}
-			w := cueball.GenWorker(pk.Name)
-			if err := state.Unmarshal(pk.Codec, w); err != nil {
-				return err
-			}
-			ch <- w
-		}
+func (p *fifo) Dequeue(ctx context.Context, ch chan<- cueball.Worker) error {
+	data, err := func() (string, error) {
+		p.rl.Lock()
+		defer p.rl.Unlock()
+		return bufio.NewReader(p.out).ReadString('\n')
+	}()
+	if err != nil {
+		return err
 	}
+	pk := new(state.Pack)
+	if err := state.Unmarshal(data, pk); err != nil {
+		return err
+	}
+	w := cueball.GenWorker(pk.Name)
+	if err := state.Unmarshal(pk.Codec, w); err != nil {
+		return err
+	}
+	ch <- w
 	return nil
 }

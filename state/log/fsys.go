@@ -92,14 +92,11 @@ func (l *fsys) store(w cueball.Worker) error {
 	return err
 }
 
-func (l *fsys) Store(ctx context.Context, ch chan cueball.Worker) error {
-	for w := range ch {
-		l.store(w)
-	}
-	return nil
+func (l *fsys) Store(ctx context.Context, w cueball.Worker) error {
+	return l.store(w)
 }
 
-func (l *fsys) Scan(ctx context.Context, ch chan cueball.Worker) error {
+func (l *fsys) Scan(ctx context.Context, ch chan<- cueball.Worker) error {
 	m, err := l.filemap()
 	if err != nil {
 		fmt.Errorf("ohh, %w", err)
@@ -107,7 +104,6 @@ func (l *fsys) Scan(ctx context.Context, ch chan cueball.Worker) error {
 	}
 	for _, w := range m {
 		if w.Status() == cueball.ENQUEUE {
-			w.SetStatus(cueball.INFLIGHT)
 			l.store(w)
 			ch <- w
 		}

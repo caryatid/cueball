@@ -28,26 +28,15 @@ func (p *mem) emulateSerialize(src, target cueball.Worker) error {
 	return state.Unmarshal(string(b), target)
 }
 
-func (p *mem) Enqueue(ctx context.Context, ch chan cueball.Worker) error {
-	for w := range ch {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		p.queue <- w
-	}
-	close(p.queue)
+func (p *mem) Enqueue(ctx context.Context, w cueball.Worker) error {
+	p.queue <- w
 	return nil
 }
 
-func (p *mem) Dequeue(ctx context.Context, ch chan cueball.Worker) error {
-	defer close(ch)
-	for w := range p.queue {
-		w_ := cueball.GenWorker(w.Name())
-		p.emulateSerialize(w, w_)
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		ch <- w_
-	}
+func (p *mem) Dequeue(ctx context.Context, ch chan<- cueball.Worker) error {
+	w_ := <-p.queue
+	w := cueball.GenWorker(w_.Name())
+	p.emulateSerialize(w_, w)
+	ch <- w
 	return nil
 }

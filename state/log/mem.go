@@ -39,19 +39,16 @@ func (l *mem) Get(ctx context.Context, uuid uuid.UUID) (cueball.Worker, error) {
 	return w, nil
 }
 
-func (l *mem) Store(ctx context.Context, ch chan cueball.Worker) error {
-	for w := range ch {
-		l.ids.Store(w.ID().String(), w)
-	}
+func (l *mem) Store(ctx context.Context, w cueball.Worker) error {
+	l.ids.Store(w.ID().String(), w)
 	return nil
 }
 
-func (l *mem) Scan(ctx context.Context, ch chan cueball.Worker) error {
+func (l *mem) Scan(ctx context.Context, ch chan<- cueball.Worker) error {
 	l.ids.Range(func(k, w_ any) bool {
 		w, _ := w_.(cueball.Worker)
 		if w.Status() == cueball.ENQUEUE &&
 			w.GetDefer().Before(time.Now()) {
-			w.SetStatus(cueball.INFLIGHT)
 			ch <- w
 		}
 		return true

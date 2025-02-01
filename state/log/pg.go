@@ -67,22 +67,17 @@ func NewPG(ctx context.Context, dburl string) (cueball.Record, error) {
 	return l, err
 }
 
-func (l *pg) Store(ctx context.Context, ch chan cueball.Worker) error {
-	for w := range ch {
-		b, err := json.Marshal(w)
-		if err != nil {
-			return err
-		}
-		_, err = l.DB.Exec(ctx, persistfmt, w.ID().String(),
-			w.Status(), w.Name(), b, w.GetDefer())
-		if err != nil {
-			return err
-		}
+func (l *pg) Store(ctx context.Context, w cueball.Worker) error {
+	b, err := json.Marshal(w)
+	if err != nil {
+		return err
 	}
-	return nil
+	_, err = l.DB.Exec(ctx, persistfmt, w.ID().String(),
+		w.Status(), w.Name(), b, w.GetDefer())
+	return err
 }
 
-func (l *pg) Scan(ctx context.Context, ch chan cueball.Worker) error {
+func (l *pg) Scan(ctx context.Context, ch chan<- cueball.Worker) error {
 	var wname string
 	var data []byte
 	rows, err := l.DB.Query(ctx, loadworkfmt)

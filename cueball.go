@@ -29,6 +29,8 @@ type WorkerGen func() Worker
 
 // TODO change [Method] name
 type Method func(context.Context, State) error
+type WMethod func(context.Context, Worker) error
+type WCMethod func(context.Context, chan<- Worker) error
 
 // Worker is the interface that must be defined by clients of this library
 // Worker structs will, generally, simply use the DefaultExecuter to register
@@ -66,30 +68,27 @@ type Retry interface {
 }
 
 type State interface {
-	Pipe
-	Record
 	Blob
 	Close() error
-	Start(context.Context) chan Worker
 	Wait(context.Context, time.Duration, []uuid.UUID) error
 	Check(context.Context, []uuid.UUID) bool
-	RunScan(context.Context) chan Worker
-	Enq() chan Worker
-	Deq() chan Worker
-	Rec() chan Worker
+	Enq() chan<- Worker
+	Deq() <-chan Worker
+	Rec() chan<- Worker
+	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
 }
 
 type Record interface {
 	Close() error
-	Store(context.Context, chan Worker) error
-	Scan(context.Context, chan Worker) error
+	Store(context.Context, Worker) error
+	Scan(context.Context, chan<- Worker) error
 	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
 }
 
 type Pipe interface {
 	Close() error
-	Enqueue(context.Context, chan Worker) error
-	Dequeue(context.Context, chan Worker) error
+	Enqueue(context.Context, Worker) error
+	Dequeue(context.Context, chan<- Worker) error
 }
 
 type Blob interface {
