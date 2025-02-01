@@ -15,7 +15,7 @@ type mem struct {
 	ids sync.Map
 }
 
-func NewMem(ctx context.Context) (cueball.Log, error) {
+func NewMem(ctx context.Context) (cueball.Record, error) {
 	l := new(mem)
 	return l, nil
 }
@@ -47,7 +47,6 @@ func (l *mem) Store(ctx context.Context, ch chan cueball.Worker) error {
 }
 
 func (l *mem) Scan(ctx context.Context, ch chan cueball.Worker) error {
-	defer close(ch)
 	l.ids.Range(func(k, w_ any) bool {
 		w, _ := w_.(cueball.Worker)
 		if w.Status() == cueball.ENQUEUE &&

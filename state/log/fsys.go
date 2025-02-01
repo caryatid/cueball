@@ -35,7 +35,7 @@ type metaData struct {
 	wname     string
 }
 
-func NewFsys(ctx context.Context, dir string) (cueball.Log, error) {
+func NewFsys(ctx context.Context, dir string) (cueball.Record, error) {
 	var err error
 	l := new(fsys)
 	if err = mkdir(dir); err != nil {
@@ -100,7 +100,6 @@ func (l *fsys) Store(ctx context.Context, ch chan cueball.Worker) error {
 }
 
 func (l *fsys) Scan(ctx context.Context, ch chan cueball.Worker) error {
-	defer close(ch)
 	m, err := l.filemap()
 	if err != nil {
 		fmt.Errorf("ohh, %w", err)

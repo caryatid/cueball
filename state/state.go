@@ -8,8 +8,8 @@ import (
 	"github.com/caryatid/cueball"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
-	"time"
 	"sync"
+	"time"
 )
 
 type defState struct {
@@ -17,10 +17,11 @@ type defState struct {
 	cueball.Pipe
 	cueball.Record
 	cueball.Blob
-	g *errgroup.Group
-	enq chan cueball.Worker
-	deq chan cueball.Worker
-	rec chan cueball.Worker
+	g    *errgroup.Group
+	enq  chan cueball.Worker
+	deq  chan cueball.Worker
+	rec  chan cueball.Worker
+	scan chan cueball.Worker
 }
 
 func NewState(ctx context.Context, p cueball.Pipe, r cueball.Record,
@@ -34,12 +35,19 @@ func NewState(ctx context.Context, p cueball.Pipe, r cueball.Record,
 	s.deq = make(chan cueball.Worker)
 	s.rec = make(chan cueball.Worker)
 	s.g, ctx = errgroup.WithContext(ctx)
+	if s.Pipe != nil {
+		s.g.Go(func() error { return s.Dequeue(ctx, s.deq) })
+		s.g.Go(func() error { return s.Enqueue(ctx, s.enq) })
+	}
+	if s.Record != nil {
+		s.g.Go(func() error { return s.Store(ctx, s.rec) })
+	}
 	return s, ctx
 }
 
-func (s *defState) runScan (ctx context.Context) chan cueball.Worker {
+func (s *defState) RunScan(ctx context.Context) chan cueball.Worker {
 	ch := make(chan cueball.Worker)
-	s.g.Go(func () error {
+	s.g.Go(func() error {
 		s.scmutex.Lock()
 		defer s.scmutex.Unlock()
 		defer close(ch)
@@ -49,17 +57,14 @@ func (s *defState) runScan (ctx context.Context) chan cueball.Worker {
 }
 
 func (s *defState) Start(ctx context.Context) chan cueball.Worker {
-	s.g.Go(func () error { return s.Dequeue(ctx, s.deq) })
-	s.g.Go(func () error { return s.Enqueue(ctx, s.enq) })
-	s.g.Go(func () error { return s.Store(ctx, s.rec) })
-	s.g.Go(func () error {
+	s.g.Go(func() error {
 		for {
-			for w := range s.runScan(ctx, s.Scan) {
+			for w := range s.RunScan(ctx) {
 				w.SetStatus(cueball.INFLIGHT)
 				s.rec <- w
 				s.enq <- w
 			}
-			time.Sleep(time.Millisecond*15) // TODO
+			time.Sleep(time.Millisecond * 15) // TODO
 		}
 		return nil
 	})
@@ -67,13 +72,13 @@ func (s *defState) Start(ctx context.Context) chan cueball.Worker {
 		for w := range s.deq {
 			w.Do(ctx, s) // error handled inside
 			if cueball.DirectEnqueue && !w.Done() {
-				enq <- w
+				s.enq <- w
 			}
 			s.rec <- w
 		}
 		return nil
 	})
-	return enq
+	return s.enq
 }
 
 func (s *defState) Check(ctx context.Context, ids []uuid.UUID) bool {
@@ -112,6 +117,18 @@ func (s *defState) Wait(ctx context.Context, wait time.Duration, checks []uuid.U
 			}
 		}
 	}
+}
+
+func (s *defState) Enq() chan cueball.Worker {
+	return s.enq
+}
+
+func (s *defState) Deq() chan cueball.Worker {
+	return s.deq
+}
+
+func (s *defState) Rec() chan cueball.Worker {
+	return s.rec
 }
 
 func (s *defState) Close() error {

@@ -73,6 +73,7 @@ type State interface {
 	Start(context.Context) chan Worker
 	Wait(context.Context, time.Duration, []uuid.UUID) error
 	Check(context.Context, []uuid.UUID) bool
+	RunScan(context.Context) chan Worker
 	Enq() chan Worker
 	Deq() chan Worker
 	Rec() chan Worker

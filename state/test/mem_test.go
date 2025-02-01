@@ -11,7 +11,7 @@ import (
 )
 
 func init() {
-	Logs["mem"] = func(ctx context.Context) cueball.Log {
+	Records["mem"] = func(ctx context.Context) cueball.Record {
 		l, err := log.NewMem(ctx)
 		if err != nil {
 			panic(err)

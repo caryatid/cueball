@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	Logs["pg"] = func(ctx context.Context) cueball.Log {
+	Records["pg"] = func(ctx context.Context) cueball.Record {
 		l, err := log.NewPG(ctx, test.Dbconn)
 		if err != nil {
 			panic(err)

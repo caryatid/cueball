@@ -40,7 +40,7 @@ type pg struct {
 	DB *pgxpool.Pool
 }
 
-func NewPG(ctx context.Context, dburl string) (cueball.Log, error) {
+func NewPG(ctx context.Context, dburl string) (cueball.Record, error) {
 	var err error
 	l := new(pg)
 	config, err := pgxpool.ParseConfig(dburl)
@@ -85,7 +85,6 @@ func (l *pg) Store(ctx context.Context, ch chan cueball.Worker) error {
 func (l *pg) Scan(ctx context.Context, ch chan cueball.Worker) error {
 	var wname string
 	var data []byte
-	defer close(ch)
 	rows, err := l.DB.Query(ctx, loadworkfmt)
 	if err != nil {
 		return err
