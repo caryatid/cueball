@@ -3,8 +3,6 @@ package state
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"github.com/caryatid/cueball"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -34,15 +32,15 @@ func NewState(ctx context.Context, p cueball.Pipe, r cueball.Record,
 	s.deq = make(chan cueball.Worker)
 	s.rec = make(chan cueball.Worker)
 	s.g, ctx = errgroup.WithContext(ctx)
+	s.g.Go(func() error { return rangeRun(ctx, s.deq, s.Work) })
 	if s.p != nil {
-		s.g.Go(func() error { return tickRun(ctx, s.deq, nil, s.p.Dequeue) })
 		s.g.Go(func() error { return rangeRun(ctx, s.enq, s.p.Enqueue) })
+		s.g.Go(func() error { return tickRun(ctx, s.deq, nil, s.p.Dequeue) })
 	}
 	if s.r != nil {
 		s.g.Go(func() error { return rangeRun(ctx, s.rec, s.r.Store) })
 		s.g.Go(func() error { return tickRun(ctx, s.enq, s.scmutex, s.r.Scan) })
 	}
-	s.g.Go(func() error { return rangeRun(ctx, s.deq, s.Work) })
 	return s, ctx
 }
 
@@ -77,7 +75,6 @@ func (s *defState) Wait(ctx context.Context, wait time.Duration, checks []uuid.U
 	for {
 		select {
 		case <-ctx.Done():
-			s.Close()
 			return nil
 		case <-tick.C:
 			if s.Check(ctx, checks) {
@@ -122,30 +119,6 @@ func (s *defState) Close() error {
 	return nil
 }
 
-// Pack facilitates multiplexing on an untyped queue
-type Pack struct {
-	Name  string
-	Codec string
-}
-
-func Unmarshal(data string, w interface{}) error {
-	b, err := base64.StdEncoding.DecodeString(data)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(b, w)
-}
-
-func Marshal(w interface{}) ([]byte, error) {
-	b, err := json.Marshal(w)
-	if err != nil {
-		return nil, err
-	}
-	data := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
-	base64.StdEncoding.Encode(data, b)
-	return data, nil
-}
-
 func rangeRun(ctx context.Context, ch <-chan cueball.Worker,
 	f cueball.WMethod) error {
 	for w := range ch {
@@ -161,7 +134,7 @@ func rangeRun(ctx context.Context, ch <-chan cueball.Worker,
 
 func tickRun(ctx context.Context, ch chan<- cueball.Worker, l sync.Locker,
 	f cueball.WCMethod) error {
-	t := time.NewTicker(time.Millisecond * 150)
+	t := time.NewTicker(time.Millisecond * 5)
 	if err := lockRun(ctx, ch, l, f); err != nil {
 		return err
 	}

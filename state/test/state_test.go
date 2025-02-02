@@ -28,32 +28,23 @@ func TestStateComponents(t *testing.T) {
 				s, ctx := state.NewState(ctx, pg(ctx),
 					lg(ctx), bg(ctx))
 				t.Run(tname, func(t *testing.T) {
-					assert.NoError(logT(ctx, s))
+					assert.NoError(compT(ctx, s))
 				})
-				s.Close()
-				/*
-					s, ctx = state.NewState(ctx, nil,
-						nil, bg(ctx))
-					t.Run(tname+"/blob", func(t *testing.T) {
-						assert.NoError(blobT(ctx, s))
-					})
-				*/
 			}
 		}
 	}
 }
 
-func blobT(ctx context.Context, s cueball.State) error {
-	return s.Close()
-}
-
-func logT(ctx context.Context, s cueball.State) error {
+func compT(ctx context.Context, s cueball.State) error {
 	checks := test.Wload(s.Rec())
 	checks = append(checks, test.Wload(s.Enq())...)
-	err := s.Wait(ctx, time.Millisecond*50, checks)
+	if err := s.Wait(ctx, time.Millisecond*25, checks); err != nil {
+		return err
+	}
+
 	for _, id := range checks {
 		w, _ := s.Get(ctx, id)
 		cueball.Lc(ctx).Debug().Interface(" W ", w).Send()
 	}
-	return err
+	return s.Close()
 }
