@@ -98,14 +98,6 @@ func (s *defState) Enq() chan<- cueball.Worker {
 	return s.enq
 }
 
-func (s *defState) Deq() <-chan cueball.Worker {
-	return s.deq
-}
-
-func (s *defState) Rec() chan<- cueball.Worker {
-	return s.rec
-}
-
 func (s *defState) Close() error {
 	if s.Blob != nil {
 		//	s.Blob.Close()

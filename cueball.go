@@ -73,8 +73,6 @@ type State interface {
 	Wait(context.Context, time.Duration, []uuid.UUID) error
 	Check(context.Context, []uuid.UUID) bool
 	Enq() chan<- Worker
-	Deq() <-chan Worker
-	Rec() chan<- Worker
 	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
 }
 

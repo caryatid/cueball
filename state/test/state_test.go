@@ -36,8 +36,7 @@ func TestStateComponents(t *testing.T) {
 }
 
 func compT(ctx context.Context, s cueball.State) error {
-	checks := test.Wload(s.Rec())
-	checks = append(checks, test.Wload(s.Enq())...)
+	checks := test.Wload(s.Enq())
 	if err := s.Wait(ctx, time.Millisecond*25, checks); err != nil {
 		return err
 	}
