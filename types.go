@@ -39,10 +39,6 @@ func Workers() (ws []string) {
 	return
 }
 
-func RegPipe(fs ...PipeGen) {}
-func RegRecord(fs ...RecordGen) {}
-func RegBlob(fs ...BlobGen) {}
-
 func NewError(es ...error) *Error {
 	e := new(Error)
 	e.wraps = append(e.wraps, es...)

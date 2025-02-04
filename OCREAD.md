@@ -74,6 +74,13 @@ is not a test. How many simulataneous workers can resilient handle? What happens
 100k records in the postinfusion or naven input tables; or as you call them queue's - no one uses a db table as a queue lol. How about 1Mil? What if it's 1Mil and 50% are gonna error? We're not even addressing data issues (i.e. what if we url encode db string that's already url encoded?) Cueball stands as a clear example of the standard "how" here.
 There, without exception, should be automated tests for all our code that must pass w/o manual intervention before deploy to staging or higher envs is possible at all. Any branch kicked off for artifact build will not create an artifact if there are any test failures and those tests must be comprehensive -- meaning must run `-race` tests for golang ( meaning you need a C compilier something else I've never been w/o ). Those tests must have good coverage and run _a lot_ of records ideally hitting avarious data edge cases. A lot means well over a thousand. Any process that doesn't have this setup doesn't belong in staging certainly not higher envs.
 
+
+### Code Org and ownership ( authority and responsibility )
+#### assignment of repos
+#### relationship with business
+#### code reviews
+
+
 # imagine the `qt` situation.
 ## network (squad)
 ### get-boot-files
