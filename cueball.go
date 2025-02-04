@@ -25,7 +25,7 @@ var (
 	DirectEnqueue = false
 )
 
-type WorkerGen func() Worker
+type Gen [C StateComponent]func(context.Context) C
 
 // TODO change [Method] name
 type Method func(context.Context, State) error
@@ -77,6 +77,7 @@ type State interface {
 }
 
 type Record interface {
+	Namer
 	Close() error
 	Store(context.Context, Worker) error
 	Scan(context.Context, chan<- Worker) error
@@ -84,12 +85,14 @@ type Record interface {
 }
 
 type Pipe interface {
+	Namer
 	Close() error
 	Enqueue(context.Context, Worker) error
 	Dequeue(context.Context, chan<- Worker) error
 }
 
 type Blob interface {
+	Namer
 	Close() error
 	Save(string, io.Reader) error
 	Load(string) (io.Reader, error)

@@ -1,6 +1,7 @@
 package cueball
 
 import (
+	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -14,22 +15,57 @@ var (
 	EnumError = errors.New("invalid enum value")
 	EndError  = errors.New("iteration complete")
 	wgens     sync.Map
+	pgens     sync.Map
+	rgens     sync.Map
+	bgens     sync.Map
 	Lc        = zerolog.Ctx // import saver; kinda dumb
 )
 
-func RegWorker(fs ...WorkerGen) {
-	for _, f := range fs {
-		wgens.Store(f().Name(), f)
-	}
+type StateComponent interface {
+	Pipe | Record | Blob | Worker
+	Namer
 }
 
-func GenWorker(name string) Worker {
-	w, ok := wgens.Load(name)
+func RegComponent[C StateComponent](ctx context.Context, f func (context.Context) (c C)) {
+	t := f(ctx)
+	name := t.Name()
+	r := gsc(t)
+        r.Store(name, f)
+}
+
+func gsc[C StateComponent](c C) sync.Map {
+	var r sync.Map
+	switch any(c).(type) {
+	case Pipe:
+	        r = bgens
+	case Record:
+	        r = rgens
+	case Blob:
+	        r = bgens
+	case Worker:
+	        r = wgens
+	}
+	return r
+}
+
+func GenComponent[C StateComponent](ctx context.Context, name string) (c C) {
+	r := gsc(c)
+	p, ok := r.Load(name)
 	if !ok {
 		return nil
 	}
-	return w.(WorkerGen)()
+	switch any(c).(type) {
+	case Pipe:
+	        return p.(Gen[Pipe])(ctx)
+	case Record:
+	        return p.(Gen[Record])(ctx)
+	case Blob:
+	        return p.(Gen[Blob])(ctx)
+	case Worker:
+	        return p.(Gen[Worker])(ctx)
+	}
 }
+
 
 func Workers() (ws []string) {
 	wgens.Range(func(n, _ any) bool {
@@ -38,10 +74,6 @@ func Workers() (ws []string) {
 	})
 	return
 }
-
-func RegPipe(fs ...PipeGen) {}
-func RegRecord(fs ...RecordGen) {}
-func RegBlob(fs ...BlobGen) {}
 
 func NewError(es ...error) *Error {
 	e := new(Error)
