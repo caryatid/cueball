@@ -55,7 +55,7 @@ func (e *defaultExecutor) Do(ctx context.Context, s cueball.State) error {
 	if st.Complete {
 		return st.Error
 	}
-	st.Error = nil // NOTE clobbers previous error.
+	st.Error = nil // NOTE clobbers previous error, for this step. Could be list?
 	err := st.Attempt.Do(ctx, s)
 	if err != nil {
 		st.Error = cueball.NewError(err)
