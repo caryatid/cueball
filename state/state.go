@@ -35,11 +35,13 @@ func NewState(ctx context.Context, p cueball.Pipe, r cueball.Record,
 	s.g.Go(func() error { return rangeRun(ctx, s.deq, s.Work) })
 	if s.p != nil {
 		s.g.Go(func() error { return rangeRun(ctx, s.enq, s.p.Enqueue) })
-		s.g.Go(func() error { return tickRun(ctx, s.deq, nil, s.p.Dequeue) })
+		s.g.Go(func() error { return tickRun(ctx, s.deq, nil, 
+			time.Millisecond*5, s.p.Dequeue) })
 	}
 	if s.r != nil {
 		s.g.Go(func() error { return rangeRun(ctx, s.rec, s.r.Store) })
-		s.g.Go(func() error { return tickRun(ctx, s.enq, s.scmutex, s.r.Scan) })
+		s.g.Go(func() error { return tickRun(ctx, s.enq, s.scmutex, 
+			time.Millisecond*11, s.r.Scan) })
 	}
 	return s, ctx
 }
@@ -125,8 +127,8 @@ func rangeRun(ctx context.Context, ch <-chan cueball.Worker,
 }
 
 func tickRun(ctx context.Context, ch chan<- cueball.Worker, l sync.Locker,
-	f cueball.WCMethod) error {
-	t := time.NewTicker(time.Millisecond * 5)
+	td time.Duration, f cueball.WCMethod) error {
+	t := time.NewTicker(td)
 	if err := lockRun(ctx, ch, l, f); err != nil {
 		return err
 	}

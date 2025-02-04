@@ -94,3 +94,4 @@ type Blob interface {
 	Save(string, io.Reader) error
 	Load(string) (io.Reader, error)
 }
+

@@ -27,7 +27,7 @@ func TestRetry(t *testing.T) {
 			dt = rb.Defer()
 		case 2:
 			assert.False(rc.Again(), "should be no more retry")
-			assert.True(rb.Defer().After(dt), "timeing is off")
+			assert.True(rb.Defer().After(dt), "timing is off")
 		}
 	}
 
