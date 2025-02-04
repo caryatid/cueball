@@ -73,14 +73,14 @@ type State interface {
 	Wait(context.Context, time.Duration, []uuid.UUID) error
 	Check(context.Context, []uuid.UUID) bool
 	Enq() chan<- Worker
-	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
+	Get(context.Context, uuid.UUID) (Worker, error)
 }
 
 type Record interface {
 	Close() error
 	Store(context.Context, Worker) error
 	Scan(context.Context, chan<- Worker) error
-	Get(context.Context, uuid.UUID) (Worker, error) // id -> worker
+	Get(context.Context, uuid.UUID) (Worker, error)
 }
 
 type Pipe interface {
