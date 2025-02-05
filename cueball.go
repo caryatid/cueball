@@ -69,7 +69,7 @@ type Retry interface {
 
 type State interface {
 	Blob
-	Close() error
+	io.Closer
 	Wait(context.Context, time.Duration, []uuid.UUID) error
 	Check(context.Context, []uuid.UUID) bool
 	Enq() chan<- Worker
@@ -77,20 +77,20 @@ type State interface {
 }
 
 type Record interface {
-	Close() error
+	io.Closer
 	Store(context.Context, Worker) error
 	Scan(context.Context, chan<- Worker) error
 	Get(context.Context, uuid.UUID) (Worker, error)
 }
 
 type Pipe interface {
-	Close() error
+	io.Closer
 	Enqueue(context.Context, Worker) error
 	Dequeue(context.Context, chan<- Worker) error
 }
 
 type Blob interface {
-	Close() error
+	io.Closer
 	Save(string, io.Reader) error
 	Load(string) (io.Reader, error)
 }

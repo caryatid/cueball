@@ -1,6 +1,6 @@
 //go:build linux
 
-package log
+package record
 
 import (
 	"bufio"
